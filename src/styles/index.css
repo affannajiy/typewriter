@@ -1,0 +1,95 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/lora';
+@import '@fontsource/cormorant-garamond/500.css';
+@import '@fontsource/cormorant-garamond/600.css';
+@import './tokens.css';
+
+/* Map the semantic tokens to Tailwind names: bg-surface, text-muted, ... */
+@theme inline {
+  --color-bg: var(--tn-bg);
+  --color-surface: var(--tn-surface);
+  --color-sunken: var(--tn-sunken);
+  --color-line: var(--tn-border);
+  --color-line-strong: var(--tn-border-strong);
+  --color-ink: var(--tn-text);
+  --color-muted: var(--tn-text-muted);
+  --color-accent: var(--tn-accent);
+  --color-on-accent: var(--tn-accent-contrast);
+  --color-accent-soft: var(--tn-accent-soft);
+  --color-danger: var(--tn-danger);
+  --color-success: var(--tn-success);
+  --color-focus: var(--tn-focus);
+  --color-decor: var(--tn-decor);
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Lora Variable', Georgia, 'Times New Roman', serif;
+  --font-display: 'Cormorant Garamond', 'Lora Variable', Georgia, serif;
+  --shadow-soft: var(--tn-shadow);
+  --radius-token: var(--tn-radius);
+}
+
+@layer base {
+  html {
+    background: var(--tn-bg);
+    color: var(--tn-text);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    min-height: 100dvh;
+    transition:
+      background-color var(--tn-motion),
+      color var(--tn-motion);
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+  }
+  /* One visible focus style for every control (WCAG 2.4.7). */
+  :focus-visible {
+    outline: 2px solid var(--tn-focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    transition:
+      background-color var(--tn-motion),
+      border-color var(--tn-motion),
+      color var(--tn-motion);
+  }
+  button:not(:disabled),
+  [role='menuitem'],
+  label[data-clickable] {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--tn-accent) 30%, transparent);
+  }
+}
+
+@keyframes tn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes tn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@utility animate-rise {
+  animation: tn-rise var(--tn-motion) ease-out;
+}
+@utility animate-spin-slow {
+  animation: tn-spin 900ms linear infinite;
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}

@@ -1,0 +1,136 @@
+/*
+ * TypeNote design tokens.
+ *
+ * Components never use raw colours. They use the semantic tokens below
+ * (through the Tailwind names mapped in index.css), so a theme is one block
+ * of values. Contrast for every theme is checked by src/styles/tokens.test.ts.
+ *
+ * Application themes are independent of notebook paper themes: paper will get
+ * its own --tn-paper-* tokens, so a dark interface can show a light page.
+ */
+
+:root,
+[data-theme='classic'] {
+  color-scheme: light;
+  --tn-bg: #f5f0e6; /* Ivory */
+  --tn-surface: #fbf8f1;
+  --tn-sunken: #e6dcc9; /* Parchment */
+  --tn-border: #d8c9b4; /* Sand */
+  --tn-border-strong: #8f7a60;
+  --tn-text: #292824; /* Ink */
+  --tn-text-muted: #654a36;
+  --tn-accent: #795b43; /* Walnut */
+  --tn-accent-contrast: #fbf8f1;
+  --tn-danger: #9b2c2c;
+  --tn-success: #2a5f3d;
+  --tn-focus: #795b43;
+  --tn-decor: #b08a50; /* Antique Brass: decoration only, never text */
+}
+
+[data-theme='dark-academia'] {
+  color-scheme: dark;
+  --tn-bg: #263b32; /* Forest Green */
+  --tn-surface: #2e463b;
+  --tn-sunken: #1e2f28;
+  --tn-border: #3e5a4c;
+  --tn-border-strong: #8ca08f;
+  --tn-text: #f1e9d8;
+  --tn-text-muted: #cfc5ae;
+  --tn-accent: #c9a35e; /* Antique gold */
+  --tn-accent-contrast: #23201a;
+  --tn-danger: #f3aaa2;
+  --tn-success: #a9d6b3;
+  --tn-focus: #d9b872;
+  --tn-decor: #b08a50;
+}
+
+[data-theme='minimalist'] {
+  color-scheme: light;
+  --tn-bg: #fafaf8;
+  --tn-surface: #ffffff;
+  --tn-sunken: #efefec;
+  --tn-border: #ddddd8;
+  --tn-border-strong: #85857f;
+  --tn-text: #26262a;
+  --tn-text-muted: #56565a;
+  --tn-accent: #4a4a50;
+  --tn-accent-contrast: #ffffff;
+  --tn-danger: #a12a2a;
+  --tn-success: #2a6341;
+  --tn-focus: #4a4a50;
+  --tn-decor: #b8b8b2;
+}
+
+[data-theme='forest'] {
+  color-scheme: light;
+  --tn-bg: #eef0e6;
+  --tn-surface: #f7f8f1;
+  --tn-sunken: #dce2d2;
+  --tn-border: #c3ccb8;
+  --tn-border-strong: #71806a;
+  --tn-text: #1f2a22;
+  --tn-text-muted: #445342;
+  --tn-accent: #3f5a3c;
+  --tn-accent-contrast: #f7f8f1;
+  --tn-danger: #962b2b;
+  --tn-success: #2a5f3d;
+  --tn-focus: #3f5a3c;
+  --tn-decor: #a7b2a0; /* Sage */
+}
+
+[data-theme='midnight'] {
+  color-scheme: dark;
+  --tn-bg: #1e2530;
+  --tn-surface: #273140;
+  --tn-sunken: #171d26;
+  --tn-border: #364255;
+  --tn-border-strong: #8090a6;
+  --tn-text: #e4e8ee;
+  --tn-text-muted: #b8c1ce;
+  --tn-accent: #a9b8cc;
+  --tn-accent-contrast: #171d26;
+  --tn-danger: #f2a5a0;
+  --tn-success: #a5d6b4;
+  --tn-focus: #c3cedd;
+  --tn-decor: #6f7f96;
+}
+
+[data-theme='rose'] {
+  color-scheme: light;
+  --tn-bg: #f8f0ec;
+  --tn-surface: #fdf8f5;
+  --tn-sunken: #eeddd8;
+  --tn-border: #dfc6c1;
+  --tn-border-strong: #96706f;
+  --tn-text: #33262a;
+  --tn-text-muted: #684a52;
+  --tn-accent: #8a5567;
+  --tn-accent-contrast: #fdf8f5;
+  --tn-danger: #962b2b;
+  --tn-success: #2a5f3d;
+  --tn-focus: #8a5567;
+  --tn-decor: #c9a0a5;
+}
+
+:root {
+  /* Derived, so a custom accent colour updates it too. */
+  --tn-accent-soft: color-mix(in srgb, var(--tn-accent) 16%, var(--tn-bg));
+  --tn-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.06);
+  --tn-radius: 0.5rem;
+  --tn-motion: 160ms;
+}
+
+/* Interface density scales Tailwind's 4px spacing unit. */
+[data-density='compact'] {
+  --spacing: 0.22rem;
+}
+
+/* Motion is an enhancement. The still version is the product. */
+[data-motion='off'] {
+  --tn-motion: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='on']) {
+    --tn-motion: 0ms;
+  }
+}
