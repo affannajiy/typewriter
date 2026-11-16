@@ -28,7 +28,8 @@ import { type StorageInfo, downloadTextFile, formatBytes, getStorageInfo, isStor
 import { contrast, isHexColour } from '@/utils/colour';
 import { formatDateTime } from '@/utils/dates';
 import { describeError } from '@/utils/errors';
-import { type AppSettings, type SettingKey, THEME_IDS, type ThemeChoice } from './model';
+import { formatShortcut } from '@/features/editor/commands';
+import { type AppSettings, EDITOR_FONTS, EDITOR_LEADINGS, EDITOR_SIZES, EDITOR_WIDTHS, MAX_DAILY_GOAL, PAPER_STYLES, SOUND_MACHINES, type SettingKey, THEME_IDS, type ThemeChoice } from './model';
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -51,6 +52,7 @@ export function SettingsScreen() {
     <div className="mx-auto max-w-3xl">
       <PageHeader title={t.settings.title} description={t.settings.description} />
       <AppearanceSection settings={settings} set={set} />
+      <TextSection settings={settings} set={set} />
       <Section title={t.settings.writing.title}>
         <Card>
           <Row label={t.settings.writing.pageSize} hint={t.settings.writing.hint}>
@@ -69,6 +71,15 @@ export function SettingsScreen() {
               value={settings.pageMargin}
               options={(['narrow', 'normal', 'wide'] as const).map((value) => ({ value, label: t.settings.writing.margins[value] }))}
               onChange={(value) => set('pageMargin', value)}
+            />
+          </Row>
+          <Row label={t.settings.writing.paperStyle} hint={t.settings.writing.paperStyleHint}>
+            <Segmented
+              legend={t.settings.writing.paperStyle}
+              name="paper-style"
+              value={settings.paperStyle}
+              options={PAPER_STYLES.map((value) => ({ value, label: t.settings.writing.paperStyles[value] }))}
+              onChange={(value) => set('paperStyle', value)}
             />
           </Row>
         </Card>
@@ -163,6 +174,106 @@ function AppearanceSection({ settings, set }: { settings: AppSettings; set: <K e
   );
 }
 
+type Setter = <K extends SettingKey>(key: K, value: AppSettings[K]) => void;
+
+/** Typeface, size, spacing and column of the page text, with a sample; focus mode; the daily goal. */
+function TextSection({ settings, set }: { settings: AppSettings; set: Setter }) {
+  const copy = t.settings.text;
+  // The field may hold a half-typed number; only a valid one is stored. While the
+  // writer types, the field is theirs: a stored value arriving late must not overwrite it.
+  const [goal, setGoal] = useState(String(settings.dailyGoal));
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [storedGoal, setStoredGoal] = useState(settings.dailyGoal);
+  if (storedGoal !== settings.dailyGoal && !editingGoal) {
+    setStoredGoal(settings.dailyGoal);
+    setGoal(String(settings.dailyGoal));
+  }
+  const goalNumber = Number(goal);
+  const goalValid = goal.trim() !== '' && Number.isInteger(goalNumber) && goalNumber >= 0 && goalNumber <= MAX_DAILY_GOAL;
+
+  return (
+    <Section title={copy.title}>
+      <Card>
+        <Row label={copy.font} hint={copy.fontHint}>
+          <Segmented legend={copy.font} name="editor-font" value={settings.editorFont} options={EDITOR_FONTS.map((value) => ({ value, label: copy.fonts[value] }))} onChange={(value) => set('editorFont', value)} />
+        </Row>
+        <Row label={copy.size}>
+          <Segmented legend={copy.size} name="editor-size" value={settings.editorSize} options={EDITOR_SIZES.map((value) => ({ value, label: copy.sizes[value] }))} onChange={(value) => set('editorSize', value)} />
+        </Row>
+        <Row label={copy.leading}>
+          <Segmented legend={copy.leading} name="editor-leading" value={settings.editorLeading} options={EDITOR_LEADINGS.map((value) => ({ value, label: copy.leadings[value] }))} onChange={(value) => set('editorLeading', value)} />
+        </Row>
+        <Row label={copy.width} hint={copy.widthHint}>
+          <Segmented legend={copy.width} name="editor-width" value={settings.editorWidth} options={EDITOR_WIDTHS.map((value) => ({ value, label: copy.widths[value] }))} onChange={(value) => set('editorWidth', value)} />
+        </Row>
+        {/* The page's own styles, so the sample is exactly what a page will show. */}
+        <div
+          role="img"
+          aria-label={copy.sampleLabel}
+          className="tn-page border-b border-line px-4 py-3"
+          data-font={settings.editorFont}
+          data-size={settings.editorSize}
+          data-leading={settings.editorLeading}
+          data-paper={settings.paperStyle}
+        >
+          <div data-layout="continuous">
+            <div className="tn-editor flex">
+              <p className="tn-prose" style={{ minHeight: 0 }}>
+                {copy.sample} {copy.sample}
+              </p>
+            </div>
+          </div>
+        </div>
+        <Row label={copy.focusDim} hint={copy.focusDimHint(formatShortcut('Mod+Shift+F'))}>
+          <Segmented
+            legend={copy.focusDim}
+            name="focus-dim"
+            value={settings.focusDim ? 'on' : 'off'}
+            options={[
+              { value: 'on', label: copy.focusDimOn },
+              { value: 'off', label: copy.focusDimOff },
+            ]}
+            onChange={(value) => set('focusDim', value === 'on')}
+          />
+        </Row>
+        <Row label={copy.goal} hint={copy.goalHint}>
+          <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="daily-goal">
+              {copy.goal}
+            </label>
+            <input
+              id="daily-goal"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={MAX_DAILY_GOAL}
+              step={50}
+              value={goal}
+              aria-invalid={!goalValid}
+              onFocus={() => setEditingGoal(true)}
+              onBlur={() => {
+                setEditingGoal(false);
+                // Leaving the field with an invalid number shows the stored goal again.
+                setStoredGoal(settings.dailyGoal);
+                setGoal(String(settings.dailyGoal));
+              }}
+              onChange={(e) => {
+                setGoal(e.target.value);
+                const next = Number(e.target.value);
+                if (e.target.value.trim() !== '' && Number.isInteger(next) && next >= 0 && next <= MAX_DAILY_GOAL) set('dailyGoal', next);
+              }}
+              className="h-11 w-28 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink tabular-nums aria-invalid:border-danger"
+            />
+            <output htmlFor="daily-goal" className="text-sm text-muted">
+              {goalValid ? copy.goalValue(goalNumber) : copy.goalValue(settings.dailyGoal)}
+            </output>
+          </div>
+        </Row>
+      </Card>
+    </Section>
+  );
+}
+
 function SoundSection({ settings, set }: { settings: AppSettings; set: <K extends SettingKey>(key: K, value: AppSettings[K]) => void }) {
   // The slider moves at once; the database write follows.
   const [volume, setVolume] = useState(settings.soundVolume);
@@ -190,7 +301,7 @@ function SoundSection({ settings, set }: { settings: AppSettings; set: <K extend
       ...(settings.soundBell === 'margin' ? ([[1300, 'bell']] as [number, SoundKind][]) : []),
       [1900, 'return', { travel: 1, bell: settings.soundBell === 'return' }],
     ];
-    for (const [delay, kind, detail] of steps) window.setTimeout(() => playTypewriterSound(kind, volume, detail), delay);
+    for (const [delay, kind, detail] of steps) window.setTimeout(() => playTypewriterSound(kind, volume, detail, settings.soundMachine), delay);
   };
 
   return (
@@ -246,6 +357,15 @@ function SoundSection({ settings, set }: { settings: AppSettings; set: <K extend
               { value: 'off', label: t.settings.sound.bellOff },
             ]}
             onChange={(value) => set('soundBell', value)}
+          />
+        </Row>
+        <Row label={t.settings.sound.machine} hint={t.settings.sound.machineHint}>
+          <Segmented
+            legend={t.settings.sound.machine}
+            name="sound-machine"
+            value={settings.soundMachine}
+            options={SOUND_MACHINES.map((value) => ({ value, label: t.settings.sound.machines[value] }))}
+            onChange={(value) => set('soundMachine', value)}
           />
         </Row>
       </Card>

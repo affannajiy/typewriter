@@ -4,28 +4,15 @@ import { Link } from 'react-router';
 import type { Workspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 import type { Folder, Id, Notebook, Page, Tag } from '@/types/models';
-import { readableOn } from '@/utils/colour';
 import { formatRelative } from '@/utils/dates';
+import { NotebookCover } from './covers';
 import { ItemMenu } from './ItemMenu';
 
 export const pagePath = (id: Id) => `/page/${id}`;
 export const notebookPath = (id: Id) => `/notebook/${id}`;
 export const folderPath = (id: Id | null) => (id ? `/library/folder/${id}` : '/library');
 
-/** The cover of a notebook: a coloured board with the title set in the display face. */
-export function NotebookCover({ notebook, size = 'card' }: { notebook: Pick<Notebook, 'name' | 'cover'>; size?: 'card' | 'thumb' }) {
-  const ink = readableOn(notebook.cover.colour);
-  if (size === 'thumb') {
-    return <span aria-hidden className="block h-10 w-8 shrink-0 rounded-sm border-s-4 border-black/25" style={{ backgroundColor: notebook.cover.colour }} />;
-  }
-  return (
-    <div className="flex aspect-[3/4] flex-col justify-between rounded-md border-s-8 border-black/25 p-3 shadow-soft" style={{ backgroundColor: notebook.cover.colour, color: ink }}>
-      <span aria-hidden className="h-px w-full opacity-40" style={{ backgroundColor: ink }} />
-      <span className="font-display text-xl leading-tight font-semibold break-words line-clamp-4">{notebook.name}</span>
-      <span aria-hidden className="h-px w-full opacity-40" style={{ backgroundColor: ink }} />
-    </div>
-  );
-}
+export { NOTEBOOK_ICON_GLYPHS, NotebookCover } from './covers';
 
 export function TagChip({ tag, to }: { tag: Tag; to?: string }) {
   const body = (

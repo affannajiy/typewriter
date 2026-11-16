@@ -16,14 +16,14 @@ export function useTypewriter(settings: AppSettings) {
   const carriage = useRef<CaretPlace | null>(null);
   const paperFed = useRef(false);
 
-  const play = (kind: SoundKind, detail?: SoundDetail) => playTypewriterSound(kind, settings.soundVolume, detail);
+  const play = (kind: SoundKind, detail?: SoundDetail) => playTypewriterSound(kind, settings.soundVolume, detail, settings.soundMachine);
 
   // A sheet is fed in when a page opens, if the browser already allows audio.
   useEffect(() => {
     if (!on || paperFed.current) return;
     paperFed.current = true;
-    if (isTypewriterSoundReady()) playTypewriterSound('paper', settings.soundVolume);
-  }, [on, settings.soundVolume]);
+    if (isTypewriterSoundReady()) playTypewriterSound('paper', settings.soundVolume, {}, settings.soundMachine);
+  }, [on, settings.soundVolume, settings.soundMachine]);
 
   const returnCarriage = (travel: number) => {
     play('return', { travel, bell: settings.soundBell === 'return' });

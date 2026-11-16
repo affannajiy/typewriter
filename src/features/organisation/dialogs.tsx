@@ -8,8 +8,9 @@ import { folderSubtreeIds } from '@/database/repositories/folders';
 import { DEFAULT_COVER_COLOUR, MAX_DESCRIPTION_LENGTH, type NotebookDetails } from '@/database/repositories/notebooks';
 import type { Workspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
-import type { Id, ItemKind, Notebook, PageLocation } from '@/types/models';
+import { COVER_KINDS, type CoverKind, type Id, type ItemKind, NOTEBOOK_ICONS, type Notebook, type NotebookIcon, type PageLocation } from '@/types/models';
 import { isHexColour } from '@/utils/colour';
+import { NOTEBOOK_ICON_GLYPHS } from './covers';
 
 /** A dialog with one name field. Used to create and to rename. */
 export function NameDialog({ open, onClose, title, label, initial = '', submitLabel, maxLength = MAX_NAME_LENGTH, onSubmit }: {
@@ -73,7 +74,11 @@ export const COVER_COLOURS = [
   { value: '#292824', name: 'Ink' },
 ] as const;
 
-/** Create or edit a notebook: name, description and cover colour. */
+/** A choice drawn as a small button; the selection shows by its border and weight, not colour alone. */
+const choiceClass =
+  'flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-sm text-ink hover:bg-accent-soft has-checked:border-ink has-checked:bg-accent-soft has-checked:font-semibold has-checked:shadow-[inset_0_0_0_1px_var(--tn-text)] has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus';
+
+/** Create or edit a notebook: name, description, cover colour and finish, icon. */
 export function NotebookDialog({ open, onClose, notebook, onSubmit }: {
   open: boolean;
   onClose: () => void;
@@ -92,6 +97,8 @@ function NotebookForm({ notebook, onClose, onSubmit }: { notebook?: Notebook; on
   const [name, setName] = useState(notebook?.name ?? '');
   const [description, setDescription] = useState(notebook?.description ?? '');
   const [colour, setColour] = useState(notebook?.cover.colour ?? DEFAULT_COVER_COLOUR);
+  const [kind, setKind] = useState<CoverKind>(notebook?.cover.kind ?? 'solid');
+  const [icon, setIcon] = useState<NotebookIcon | null>(notebook?.icon ?? null);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -100,7 +107,7 @@ function NotebookForm({ notebook, onClose, onSubmit }: { notebook?: Notebook; on
       onSubmit={(event) => {
         event.preventDefault();
         if (name.trim() === '') return setError(t.organise.nameRequired);
-        onSubmit({ name, description, coverColour: isHexColour(colour) ? colour : DEFAULT_COVER_COLOUR });
+        onSubmit({ name, description, coverColour: isHexColour(colour) ? colour : DEFAULT_COVER_COLOUR, coverKind: kind, icon });
         onClose();
       }}
       className="flex flex-col gap-4"
@@ -122,6 +129,37 @@ function NotebookForm({ notebook, onClose, onSubmit }: { notebook?: Notebook; on
             {t.notebook.customColour}
             <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} className="size-9 rounded border border-line-strong bg-surface p-0.5" />
           </label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium text-ink">{t.notebook.coverFinish}</legend>
+        <div className="flex flex-wrap gap-2">
+          {COVER_KINDS.map((value) => (
+            <label key={value} data-clickable className={choiceClass}>
+              <input type="radio" name="cover-finish" value={value} checked={kind === value} onChange={() => setKind(value)} className="sr-only" />
+              <span aria-hidden data-kind={value} className="tn-cover block h-7 w-5 shrink-0 rounded-sm border border-black/20" style={{ backgroundColor: isHexColour(colour) ? colour : DEFAULT_COVER_COLOUR }} />
+              {t.notebook.finishes[value]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium text-ink">{t.notebook.icon}</legend>
+        <div className="flex flex-wrap gap-2">
+          <label data-clickable className={choiceClass}>
+            <input type="radio" name="notebook-icon" value="" checked={icon === null} onChange={() => setIcon(null)} className="sr-only" />
+            {t.notebook.noIcon}
+          </label>
+          {NOTEBOOK_ICONS.map((value) => {
+            const Glyph = NOTEBOOK_ICON_GLYPHS[value];
+            return (
+              <label key={value} data-clickable title={t.notebook.icons[value]} className={cx(choiceClass, 'w-11 justify-center px-0')}>
+                <input type="radio" name="notebook-icon" value={value} checked={icon === value} onChange={() => setIcon(value)} className="sr-only" />
+                <Glyph aria-hidden size={18} />
+                <span className="sr-only">{t.notebook.icons[value]}</span>
+              </label>
+            );
+          })}
         </div>
       </fieldset>
       <div className="flex justify-end gap-2">

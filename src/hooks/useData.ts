@@ -7,8 +7,9 @@ import { listPages } from '@/database/repositories/pages';
 import { readSettings } from '@/database/repositories/settings';
 import { listTags } from '@/database/repositories/tags';
 import { listTrash } from '@/database/repositories/trash';
+import { listWritingDays } from '@/database/repositories/writing';
 import { type AppSettings, resolveSettings } from '@/features/settings/model';
-import type { Drawing, Folder, Id, Notebook, Page, Tag } from '@/types/models';
+import type { Drawing, Folder, Id, Notebook, Page, Tag, WritingDay } from '@/types/models';
 
 /**
  * Live views of the workspace. Components read data only through these hooks,
@@ -38,6 +39,11 @@ export const useTrash = () => useLiveQuery(listTrash, []);
 /** A drawing's stored strokes. Undefined while loading; null when the drawing has never been saved. */
 export function useDrawing(id: Id | null): Drawing | null | undefined {
   return useLiveQuery(async () => (id ? ((await getDrawing(id)) ?? null) : null), [id]);
+}
+
+/** Every day with words written, oldest first. One small row per day. Undefined while loading. */
+export function useWritingDays(): WritingDay[] | undefined {
+  return useLiveQuery(() => listWritingDays(''), []);
 }
 
 export function useSettings(): AppSettings {

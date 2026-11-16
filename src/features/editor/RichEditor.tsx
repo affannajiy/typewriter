@@ -46,10 +46,12 @@ interface RichEditorProps {
   pageId?: Id;
   /** Opens a drawing full screen. */
   onOpenDrawing?: (drawingId: Id) => void;
+  /** Changes whenever the text's size changes (typeface, size, spacing), so sheets are measured again. */
+  textMetrics?: string;
 }
 
 /** The writing surface: toolbar, rich text, slash menu, and sheets in the paginated layout. */
-export function RichEditor({ initial, editable, layout, pageSize, pageMargin, typewriter, onChange, onPageCount, pageId, onOpenDrawing }: RichEditorProps) {
+export function RichEditor({ initial, editable, layout, pageSize, pageMargin, typewriter, onChange, onPageCount, pageId, onOpenDrawing, textMetrics }: RichEditorProps) {
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [pages, setPages] = useState(1);
   const [available, setAvailable] = useState(0);
@@ -162,8 +164,14 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
   // Give the pagination plugin the new sheet and ask it to measure again.
   useEffect(() => {
     geometry.current = sheet ? geometryFor(sheet) : null;
-    if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta('layout', true).setMeta('addToHistory', false));
-  }, [editor, sheet]);
+    if (editor.isDestroyed) return;
+    const measure = () => {
+      if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta('layout', true).setMeta('addToHistory', false));
+    };
+    measure();
+    // A new typeface may still be loading: measure again once it has arrived.
+    void document.fonts?.ready.then(measure);
+  }, [editor, sheet, textMetrics]);
 
   useEffect(() => {
     onPageCount?.(pageCount);
@@ -181,7 +189,13 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
         >
           {sheet &&
             Array.from({ length: pageCount }, (_, index) => (
-              <div key={index} aria-hidden data-testid="sheet" className="absolute inset-x-0 rounded-sm border border-line bg-surface shadow-soft" style={{ top: index * stride, height: sheet.height }} />
+              <div
+                key={index}
+                aria-hidden
+                data-testid="sheet"
+                className="tn-sheet absolute inset-x-0 rounded-sm border border-line bg-surface shadow-soft"
+                style={{ top: index * stride, height: sheet.height, ['--tn-sheet-margin' as string]: `${sheet.margin - 1}px` }}
+              />
             ))}
           <EditorContent editor={editor} className="tn-editor relative flex flex-1 flex-col" style={sheet ? { padding: `${sheet.margin}px ${sheet.margin}px 0` } : undefined} />
         </div>

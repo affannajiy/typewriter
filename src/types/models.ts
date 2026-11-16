@@ -29,17 +29,26 @@ export interface Folder extends Versioned, Trashable {
   order: number;
 }
 
-/** Extended in Milestone 5 (images, patterns, title position). */
+/** How a cover is finished. `solid` is plain cloth; the others are a pattern pressed into it. */
+export const COVER_KINDS = ['solid', 'linen', 'stripes', 'dots', 'grid'] as const;
+export type CoverKind = (typeof COVER_KINDS)[number];
+
 export interface NotebookCover {
-  kind: 'solid';
+  kind: CoverKind;
   colour: string;
 }
+
+/** Icons a notebook can carry on its cover and in lists. Names, not images: the interface draws them. */
+export const NOTEBOOK_ICONS = ['book', 'feather', 'flask', 'calculator', 'globe', 'music', 'palette', 'leaf', 'heart', 'star', 'code', 'compass'] as const;
+export type NotebookIcon = (typeof NOTEBOOK_ICONS)[number];
 
 export interface Notebook extends Versioned, Trashable {
   name: string;
   description: string;
   folderId: Id | null;
   cover: NotebookCover;
+  /** Since schema version 3. Null: no icon. */
+  icon: NotebookIcon | null;
   tagIds: Id[];
   favourite: boolean;
   order: number;
@@ -79,6 +88,17 @@ export interface Page extends Versioned, Trashable {
 export interface Tag extends Versioned {
   name: string;
   colour: string;
+}
+
+/**
+ * Words written on one calendar day, on this device. Since schema version 3.
+ * A save that makes a page longer adds the difference; deleting never subtracts.
+ */
+export interface WritingDay {
+  /** Local calendar day, `YYYY-MM-DD`. The key. */
+  date: string;
+  words: number;
+  updatedAt: number;
 }
 
 export interface SettingRecord {

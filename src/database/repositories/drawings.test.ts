@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TypeNoteDB, db } from '@/database/db';
+import { SCHEMA_VERSION, TypeNoteDB, db } from '@/database/db';
 import type { Stroke } from '@/types/models';
 import { MAX_DRAWING_HEIGHT, copyDrawing, getDrawing, listDrawingsOfPage, saveDrawing } from './drawings';
 import { createPage } from './pages';
@@ -97,7 +97,7 @@ describe('schema version 2', () => {
 
     const upgraded = new TypeNoteDB(name);
     await upgraded.open();
-    expect(upgraded.verno).toBe(2);
+    expect(upgraded.verno).toBe(SCHEMA_VERSION);
     expect(await upgraded.pages.get('p1')).toMatchObject({ title: 'Old page', content, plainText: 'Kept' });
     expect(await upgraded.settings.get('theme')).toMatchObject({ value: 'forest' });
     expect(await upgraded.drawings.count()).toBe(0);

@@ -33,8 +33,9 @@ async function writeBody(page: Page, ...paragraphs: string[]) {
  * Chooses a radio button. The choice is stored before the button shows it,
  * so this waits for the stored state instead of the click.
  */
-async function choose(page: Page, name: string) {
-  const radio = page.getByRole('radio', { name });
+async function choose(page: Page, name: string, group?: string) {
+  const scope = group ? page.getByRole('group', { name: group }) : page;
+  const radio = scope.getByRole('radio', { name, exact: true });
   await radio.click({ force: true });
   await expect(radio).toBeChecked();
 }
@@ -432,7 +433,7 @@ test('the sheets layout breaks the text into pages, and the paper settings apply
   const pageUrl = page.url();
   await page.goto('./#/settings');
   await choose(page, 'Letter');
-  await choose(page, 'Wide');
+  await choose(page, 'Wide', 'Margins');
   await page.goto(pageUrl);
   await expect.poll(async () => (await shape()).ratio).toBeCloseTo(1056 / 816, 1);
   await expect.poll(async () => (await shape()).margin).toBeCloseTo(144 / 816, 2);
@@ -490,4 +491,70 @@ test('a drawing is made in a page, saved, reopened and downloaded as an image', 
   await expect(page.getByRole('dialog', { name: 'Drawing' }).getByRole('img', { name: /Drawing canvas/ })).toHaveAccessibleName('Drawing canvas, 3 strokes');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Drawing' })).toBeHidden();
+});
+
+test('the writing atmosphere: typeface, ruled paper, focus mode, covers and the words written', async ({ page }) => {
+  await page.goto('./#/settings');
+  await choose(page, 'Typewriter');
+  await choose(page, 'Large');
+  await choose(page, 'Lined');
+  const goal = page.getByRole('spinbutton', { name: 'Daily word goal' });
+  await goal.fill('10');
+  await expect(page.getByText('10 words', { exact: true })).toBeVisible();
+
+  // A notebook with a striped cover and an icon.
+  await page.goto('./');
+  await createNotebook(page, 'Field notes');
+  await expect(page.getByRole('heading', { level: 1, name: 'Field notes' })).toBeVisible();
+  await page.goto('./#/library');
+  await page.getByRole('button', { name: 'Actions for Field notes' }).click();
+  await page.getByRole('menuitem', { name: 'Edit details' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit notebook' });
+  await dialog.getByText('Stripes', { exact: true }).click();
+  await dialog.getByTitle('Leaf').click();
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await page.reload();
+  const cover = page.locator('.tn-cover[data-kind="stripes"]').first();
+  await expect(cover).toBeVisible();
+  await expect(cover.locator('svg')).toHaveCount(1);
+
+  // A page in the chosen typeface, on ruled paper: every block starts on a rule.
+  await page.goto('./');
+  await newPageInMain(page);
+  await writeBody(page, 'One two three four five six seven eight nine ten eleven twelve.', 'A second paragraph.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('## A heading');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('After the heading.');
+  await expect(page.getByText(/Saved on this device at/)).toBeVisible();
+  const ruling = () =>
+    page.evaluate(() => {
+      const prose = document.querySelector<HTMLElement>('.tn-prose')!;
+      const style = getComputedStyle(prose);
+      const line = parseFloat(style.lineHeight);
+      const top = prose.getBoundingClientRect().top + parseFloat(style.paddingTop);
+      const offsets = Array.from(prose.children, (block) => ((block.getBoundingClientRect().top - top) / line) % 1);
+      return { font: style.fontFamily, size: style.fontSize, image: style.backgroundImage, offsets };
+    });
+  const measured = await ruling();
+  expect(measured.font).toContain('JetBrains Mono');
+  expect(measured.size).toBe('20px');
+  expect(measured.image).toContain('linear-gradient');
+  for (const offset of measured.offsets) expect(Math.min(offset, 1 - offset)).toBeLessThan(0.01);
+
+  // Focus mode: only the page is left; Escape brings the rest back.
+  const toolbar = page.getByRole('toolbar', { name: 'Formatting' });
+  await page.getByRole('button', { name: 'Focus mode' }).click();
+  await expect(toolbar).toBeHidden();
+  await expect(page.getByRole('navigation', { name: /./ })).toHaveCount(0);
+  await page.getByLabel('Page text').click();
+  await page.keyboard.type(' More.');
+  await page.keyboard.press('Escape');
+  await expect(toolbar).toBeVisible();
+  await expect(page.getByText(/Saved on this device at/)).toBeVisible();
+
+  // The desk counts today's words against the goal.
+  await page.goto('./');
+  await expect(page.getByText('Goal reached', { exact: false })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Last seven days' }).getByRole('listitem')).toHaveCount(7);
 });

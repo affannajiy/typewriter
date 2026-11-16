@@ -1,7 +1,7 @@
 import { SCHEMA_VERSION } from '@/database/db';
 import { MAX_NAME_LENGTH } from '@/database/repositories/common';
 import { SETTING_KEYS, isValidSetting } from '@/features/settings/model';
-import { DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag } from '@/types/models';
+import { COVER_KINDS, DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag, type WritingDay } from '@/types/models';
 import { isHexColour } from '@/utils/colour';
 
 /**
@@ -23,6 +23,8 @@ export interface BackupData {
   settings: SettingRecord[];
   /** Missing from files written before schema version 2; read as empty. */
   drawings: Drawing[];
+  /** Missing from files written before schema version 3; read as empty. */
+  writingDays: WritingDay[];
 }
 
 export interface BackupFile {
@@ -88,6 +90,9 @@ function idList(v: unknown, path: string): string[] {
 }
 function list(v: unknown, path: string): unknown[] {
   return Array.isArray(v) ? v : fail(path);
+}
+function oneOf<T extends string>(v: unknown, allowed: readonly T[], path: string): T {
+  return allowed.find((a) => a === v) ?? fail(path);
 }
 
 function versioned(r: Raw, path: string) {
@@ -160,14 +165,15 @@ function folder(v: unknown, path: string): Folder {
 function notebook(v: unknown, path: string): Notebook {
   const r = obj(v, path);
   const cover = obj(r.cover, `${path}.cover`);
-  if (cover.kind !== 'solid') fail(`${path}.cover.kind`);
   return {
     ...versioned(r, path),
     ...trashable(r, path),
     name: str(r.name, `${path}.name`),
     description: str(r.description, `${path}.description`, 1000),
     folderId: nullableId(r.folderId, `${path}.folderId`),
-    cover: { kind: 'solid', colour: colour(cover.colour, `${path}.cover.colour`) },
+    cover: { kind: oneOf(cover.kind, COVER_KINDS, `${path}.cover.kind`), colour: colour(cover.colour, `${path}.cover.colour`) },
+    // Missing before schema version 3.
+    icon: r.icon === undefined || r.icon === null ? null : oneOf(r.icon, NOTEBOOK_ICONS, `${path}.icon`),
     tagIds: idList(r.tagIds, `${path}.tagIds`),
     favourite: bool(r.favourite, `${path}.favourite`),
     order: num(r.order, `${path}.order`),
@@ -199,10 +205,6 @@ function page(v: unknown, path: string): Page {
 
 const MAX_STROKES = 20_000;
 const MAX_POINT_VALUES = 3 * 50_000;
-
-function oneOf<T extends string>(v: unknown, allowed: readonly T[], path: string): T {
-  return allowed.find((a) => a === v) ?? fail(path);
-}
 
 function stroke(v: unknown, path: string): Stroke {
   const r = obj(v, path);
@@ -237,6 +239,18 @@ function drawing(v: unknown, path: string): Drawing {
   };
 }
 
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_WORDS_PER_DAY = 10_000_000;
+
+function writingDay(v: unknown, path: string): WritingDay {
+  const r = obj(v, path);
+  const date = str(r.date, `${path}.date`, 10);
+  if (!DAY_KEY.test(date)) fail(`${path}.date`);
+  const words = num(r.words, `${path}.words`);
+  if (!Number.isInteger(words) || words < 0 || words > MAX_WORDS_PER_DAY) fail(`${path}.words`);
+  return { date, words, updatedAt: num(r.updatedAt, `${path}.updatedAt`) };
+}
+
 function tag(v: unknown, path: string): Tag {
   const r = obj(v, path);
   return { ...versioned(r, path), name: str(r.name, `${path}.name`, 40), colour: colour(r.colour, `${path}.colour`) };
@@ -262,6 +276,15 @@ function unique<T extends { id: string }>(items: T[], path: string): T[] {
     seen.add(item.id);
   }
   return items;
+}
+
+function uniqueDays(days: WritingDay[]): WritingDay[] {
+  const seen = new Set<string>();
+  for (const day of days) {
+    if (seen.has(day.date)) throw new BackupError('duplicate-id', `writingDays: ${day.date}`);
+    seen.add(day.date);
+  }
+  return days;
 }
 
 /** Parse and validate the text of a backup file. Throws BackupError. */
@@ -292,6 +315,7 @@ export function parseBackup(text: string): BackupFile {
       tags: unique(each('tags', tag), 'tags'),
       settings: settings(d.settings ?? [], 'settings'),
       drawings: d.drawings === undefined ? [] : unique(each('drawings', drawing), 'drawings'),
+      writingDays: d.writingDays === undefined ? [] : uniqueDays(each('writingDays', writingDay)),
     },
   };
 }

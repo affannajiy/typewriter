@@ -172,6 +172,31 @@ describe('playTypewriterSound', () => {
     expect(isTypewriterSoundReady()).toBe(false);
   });
 
+  it('makes each machine with its own build: the bell, the length of the carriage', () => {
+    const made = installFakeAudio();
+    const carriage = (machine: 'desk' | 'portable' | 'office') => {
+      const before = made.noise;
+      vi.advanceTimersByTime(100);
+      playTypewriterSound('return', 60, { travel: 1 }, machine);
+      return made.noise - before;
+    };
+    // The desk machine's bell is the one the fake listens for; the others are tuned elsewhere.
+    playTypewriterSound('bell', 60, {}, 'portable');
+    playTypewriterSound('bell', 60, {}, 'office');
+    expect(made.bells).toBe(0);
+    playTypewriterSound('bell', 60, {}, 'desk');
+    expect(made.bells).toBe(2);
+    // A longer carriage passes more teeth of the rack.
+    expect(carriage('office')).toBeGreaterThan(carriage('desk'));
+    expect(carriage('desk')).toBeGreaterThan(carriage('portable'));
+  });
+
+  it('plays the desk machine for an unknown machine name', () => {
+    const made = installFakeAudio();
+    playTypewriterSound('bell', 60, {}, 'harpsichord' as never);
+    expect(made.bells).toBe(2);
+  });
+
   it('never lets an audio failure reach the writer', () => {
     vi.stubGlobal(
       'AudioContext',
@@ -190,6 +215,12 @@ describe('sound settings', () => {
     expect(DEFAULT_SETTINGS.typingSound).toBe(false);
     expect(resolveSettings({ typingSound: 'yes', soundVolume: 250 })).toMatchObject({ typingSound: false, soundVolume: 60 });
     expect(resolveSettings({ typingSound: true, soundVolume: 0 })).toMatchObject({ typingSound: true, soundVolume: 0 });
+  });
+
+  it('model the desk machine unless another is chosen', () => {
+    expect(DEFAULT_SETTINGS.soundMachine).toBe('desk');
+    expect(resolveSettings({ soundMachine: 'office' }).soundMachine).toBe('office');
+    expect(resolveSettings({ soundMachine: 'electric' }).soundMachine).toBe('desk');
   });
 
   it('ring the bell on every new line unless told otherwise', () => {

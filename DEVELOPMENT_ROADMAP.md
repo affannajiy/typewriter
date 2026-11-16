@@ -1,6 +1,6 @@
 # Development Roadmap and Implementation Checklist
 
-**Last updated:** 2026-11-17 · **Version:** 0.4.0
+**Last updated:** 2026-11-17 · **Version:** 0.5.0
 
 Status words: **Not started**, **In progress**, **Implemented** (works, not yet covered by an
 automated test), **Tested** (works and has automated tests), **Blocked**.
@@ -11,8 +11,8 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | 2 Database and organisation | Done, with the gaps listed below |
 | 3 Writing editor | Done, with the gaps listed below |
 | 4 Drawing | Done, with the gaps listed below |
-| 5 Writing atmosphere | In progress (next): typewriter sounds done early, at the owner's request |
-| 6 PDF and audio | Not started |
+| 5 Writing atmosphere | Done, with the gaps listed below |
+| 6 PDF and audio | Not started (next) |
 | 7 Study features | Not started |
 | 8 Polish and deployment | Not started (the deploy workflow exists but has never run) |
 
@@ -32,7 +32,7 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Components: Toolbar, Content blocks | Tested | Arrived with the editor (Milestone 3) |
 | Components: Tabs, Tooltip, Context menu, Floating action menu | Not started | Tooltips are native `title` for now |
 | Resizable panels | Not started | Sidebar collapses to icons instead |
-| Typography settings (font, size, line height, width) | Not started | Milestone 5 |
+| Typography settings (font, size, line height, width) | Tested | Milestone 5. App-wide, not per notebook |
 | Fonts bundled locally | Implemented | Inter, Lora, Cormorant Garamond. JetBrains Mono comes with code blocks |
 | Centralised strings, logical CSS properties, `lang` and `dir` | Implemented | English only. RTL not tested |
 
@@ -41,7 +41,7 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Item | Status | Note |
 | --- | --- | --- |
 | Dexie schema v1, repository layer | Tested | |
-| Migrations | Tested | Version 2 (drawings) is the first; opening a version 1 database is tested |
+| Migrations | Tested | Version 2 (drawings) and 3 (notebook icons, words written); opening a version 1 and a version 2 database is tested |
 | Folders: create, rename, nest, move, reorder | Tested | Cycle prevention tested |
 | Notebooks: create, edit details, cover colour, move, reorder, favourite, tags | Tested | |
 | Pages: create anywhere, move, reorder, favourite, pin, tags | Tested | |
@@ -56,9 +56,10 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Storage usage, persistence request, low-storage warning | Implemented | Depends on the browser; not automated |
 | Storage unavailable screen, error boundary | Implemented | Not automated |
 | Drag and drop | Not started | "Move to…" and "Move up/down" are the working alternative |
-| Notebook icon and accent colour | Not started | Milestone 5 |
+| Notebook icon and cover finish | Tested | Milestone 5. A separate notebook accent colour was not added: the cover colour is the notebook's colour |
 | Bookshelf and list views | Implemented | |
-| Dashboard customisation, quick capture, study corner, statistics | Not started | Milestones 5 to 8 |
+| Writing statistics on the dashboard | Tested | Milestone 5 |
+| Dashboard customisation, quick capture, study corner | Not started | Milestones 6 to 8 |
 | Global search | Tested | See Milestone 3 |
 | Templates | Not started | Release 1.1 |
 | Markdown export, PDF export | Not started | The editor's document model now exists |
@@ -133,7 +134,7 @@ end-to-end test "a workspace survives closing and reopening the app".
 - A drawing whose block was deleted stays until its page is deleted permanently (needed for undo).
 - The selection is a box with one resize corner. No rotation.
 
-## Milestone 5 — Writing atmosphere (started early)
+## Milestone 5 — Writing atmosphere
 
 | Item | Status | Note |
 | --- | --- | --- |
@@ -142,8 +143,27 @@ end-to-end test "a workspace survives closing and reopening the app".
 | Bell setting: every new line, before the line ends (margin bell), off | Tested (default and validation) / Implemented (the two other modes) | |
 | Shift down and up, paper feed when a page opens | Implemented | Sounds are unit-tested; the triggers are not automated |
 | Sound on/off on the page, volume and sample in Settings | Tested | |
-| Sound packs (other machines) | Not started | |
-| Covers, paper styles, focus mode, typography settings, statistics | Not started | |
+| Sound machines: desk, portable, office | Tested | Parameter sets for the same synthesiser: pitch, mass, ring time, body, carriage length, bell. Chosen in Settings. Not judged by ear |
+| Typography: typeface (Lora, Inter, JetBrains Mono), size, line spacing, column width | Tested | Settings → Writing, with a live sample. Unit, component and end-to-end |
+| Paper ruling: plain, lined, squared, dotted | Tested | In both layouts. Every block is a whole number of lines on ruled paper, so text stays on the rules (end-to-end measures it) |
+| Focus mode | Tested | Button under the page or Ctrl/Cmd + Shift + F; Escape leaves. Hides the app around the page and the toolbar; can fade every block but the current one |
+| Notebook covers: five finishes and twelve icons | Tested | Schema version 3 adds `icon` |
+| Words written: today, daily goal, streak, last seven days, words in pages | Tested | Counted in the page save transaction. Schema version 3 adds `writingDays` |
+
+**Gaps, on purpose or still owed:**
+
+- **Settings are app-wide.** Typeface, ruling and paper are not chosen per notebook or per page.
+- **Words written is "words added".** A save that shortens a page adds nothing, and text retyped
+  after a deletion counts again. Words written before 0.5.0 are not known. Counted per device:
+  a backup carries the days, but two devices do not add up.
+- On ruled paper, heading sizes are kept but their line height is a whole number of lines, so
+  headings sit a little looser than on plain paper. A block type added later must be given
+  whole-line heights too (ARCHITECTURE.md, D14).
+- Focus mode does not keep the caret line in the middle of the screen (no "typewriter scrolling").
+- No cover images, title position on the cover, or custom paper colours. Cover patterns are CSS.
+- The sound machines were tuned by numbers, not by ear, like the first one.
+- The faded blocks in focus mode have less contrast than WCAG asks for text. That is the purpose of
+  the setting, and "Keep all blocks" turns it off.
 
 Since Milestone 3 the sounds follow the editor: the edit is taken from the browser's `beforeinput`
 event (or from the key, for Enter and the delete keys), and the caret is measured from the editor

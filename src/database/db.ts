@@ -1,12 +1,12 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Drawing, Folder, Notebook, Page, SafetySnapshot, SettingRecord, Tag } from '@/types/models';
+import type { Drawing, Folder, Notebook, Page, SafetySnapshot, SettingRecord, Tag, WritingDay } from '@/types/models';
 
 /**
  * Current database schema version. Bump it together with a new
  * `this.version(n)` block. Never edit a released version block: add a new
  * one with an `.upgrade()` step so existing data is migrated, not lost.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export class TypeNoteDB extends Dexie {
   folders!: EntityTable<Folder, 'id'>;
@@ -16,6 +16,7 @@ export class TypeNoteDB extends Dexie {
   settings!: EntityTable<SettingRecord, 'key'>;
   snapshots!: EntityTable<SafetySnapshot, 'id'>;
   drawings!: EntityTable<Drawing, 'id'>;
+  writingDays!: EntityTable<WritingDay, 'date'>;
 
   constructor(name = 'typenote') {
     super(name);
@@ -37,6 +38,18 @@ export class TypeNoteDB extends Dexie {
         // Counted so the step fails loudly if the new table was not created.
         await tx.table('drawings').count();
       });
+    // 0.5.0: notebook icons and the words-written log. Notebooks gain `icon`;
+    // no index changes on existing tables.
+    this.version(3)
+      .stores({ writingDays: 'date' })
+      .upgrade(async (tx) => {
+        await tx
+          .table('notebooks')
+          .toCollection()
+          .modify((notebook: Record<string, unknown>) => {
+            if (notebook.icon === undefined) notebook.icon = null;
+          });
+      });
   }
 }
 
@@ -44,4 +57,4 @@ export class TypeNoteDB extends Dexie {
 export const db = new TypeNoteDB();
 
 /** Tables that hold user content, in the order used by backup and restore. */
-export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings] as const;
+export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays] as const;

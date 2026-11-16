@@ -24,7 +24,21 @@ export function formatRelative(time: number, now = Date.now()): string {
   return formatDateTime(time);
 }
 
-export type DayPart = 'morning' | 'afternoon' | 'evening';
+/** The local calendar day, as `YYYY-MM-DD`. Sorts as text in date order. */
+export function dayKey(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** The day `days` before (or after, if negative) the given one, at local midnight. */
+export function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+const weekdayShort = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+export const formatWeekday = (time: number | Date) => weekdayShort.format(time);
+
+export type DayPart ='morning' | 'afternoon' | 'evening';
 
 export function dayPart(date = new Date()): DayPart {
   const hour = date.getHours();

@@ -1,6 +1,8 @@
 import { db } from '@/database/db';
 import type { DocNode, Id, Page, PageLayout, PageLocation } from '@/types/models';
+import { countWords } from '@/utils/text';
 import { RepositoryError, bump, cleanName, found, freshVersion, isLive, notTrashed, now, orderAfter } from './common';
+import { addWordsWritten } from './writing';
 
 export const EMPTY_DOC: DocNode = { type: 'doc', content: [{ type: 'paragraph' }] };
 export const UNTITLED_PAGE = 'Untitled';
@@ -92,16 +94,19 @@ export async function createPage(input: Partial<PageLocation> & { title?: string
  * transaction, so the caller may then show "Saved".
  */
 export async function savePageDraft(id: Id, draft: { title: string; content: DocNode }): Promise<void> {
-  await db.transaction('rw', db.pages, async () => {
+  await db.transaction('rw', db.pages, db.writingDays, async () => {
     const page = found(await db.pages.get(id), 'Page');
+    const plainText = docToPlainText(draft.content);
     await patchPages(
       [id],
       bump(page, {
         title: cleanName(draft.title, UNTITLED_PAGE),
         content: draft.content,
-        plainText: docToPlainText(draft.content),
+        plainText,
       }),
     );
+    // Words written today: what this save added to the page. Deleting does not subtract.
+    await addWordsWritten(countWords(plainText) - countWords(page.plainText));
   });
 }
 

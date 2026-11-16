@@ -13,19 +13,20 @@ export { BackupError, parseBackup, type BackupFile } from './validate';
  * snapshot of the old workspace first, so the user can undo it.
  */
 
-const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings] as const;
+const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays] as const;
 const SNAPSHOTS_KEPT = 3;
 
 async function readAll(): Promise<BackupData> {
-  const [folders, notebooks, pages, tags, settings, drawings] = await Promise.all([
+  const [folders, notebooks, pages, tags, settings, drawings, writingDays] = await Promise.all([
     db.folders.toArray(),
     db.notebooks.toArray(),
     db.pages.toArray(),
     db.tags.toArray(),
     db.settings.toArray(),
     db.drawings.toArray(),
+    db.writingDays.toArray(),
   ]);
-  return { folders, notebooks, pages, tags, settings, drawings };
+  return { folders, notebooks, pages, tags, settings, drawings, writingDays };
 }
 
 /** A full copy of the workspace, including items in the Trash. */
@@ -147,6 +148,7 @@ async function replaceAll(data: BackupData): Promise<void> {
   await db.tags.bulkAdd(data.tags);
   await db.settings.bulkAdd(data.settings);
   await db.drawings.bulkAdd(data.drawings);
+  await db.writingDays.bulkAdd(data.writingDays);
 }
 
 export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promise<RestoreReport> {
@@ -186,6 +188,11 @@ export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promis
     await merge<Page>(db.pages, data.pages);
     await merge<Tag>(db.tags, data.tags);
     await merge<Drawing>(db.drawings, data.drawings);
+    // Words-written days are history, not content: they are not counted in the report.
+    for (const day of data.writingDays) {
+      const existing = await db.writingDays.get(day.date);
+      if (!existing || (mode === 'merge-newer' && day.updatedAt > existing.updatedAt)) await db.writingDays.put(day);
+    }
     // Settings on this device win in a merge: only missing keys are added.
     for (const setting of data.settings) {
       if (!(await db.settings.get(setting.key))) await db.settings.put(setting);

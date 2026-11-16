@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { db } from '@/database/db';
+import { SCHEMA_VERSION, db } from '@/database/db';
 import { createFolder, listFolders } from '@/database/repositories/folders';
 import { createNotebook, listNotebooks } from '@/database/repositories/notebooks';
 import { createPage, getPage, listPages, renamePage, setPageTags } from '@/database/repositories/pages';
@@ -190,7 +190,7 @@ describe('drawings in a backup', () => {
     await reset();
 
     const file = parseBackup(text);
-    expect(file.schemaVersion).toBe(2);
+    expect(file.schemaVersion).toBe(SCHEMA_VERSION);
     expect(file.data.drawings).toHaveLength(1);
     await restoreBackup(file, 'merge-skip');
     expect(await getDrawing('d1')).toMatchObject({ pageId: page.id, height: 900, strokes: [stroke] });

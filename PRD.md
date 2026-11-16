@@ -60,6 +60,6 @@ disagree, **the master specification governs**. The short brief informs the firs
 
 These are deliberate and are tracked in the roadmap:
 
-- Notebook **accent colour** and **icon** are not in the data model yet. They arrive with cover customisation (Milestone 5).
+- Notebooks have an **icon** and a cover **finish** (Milestone 5). A separate notebook **accent colour** was not added: the cover colour already marks the notebook.
 - Reordering is by "Move up" / "Move down" and "Move to…". **Drag and drop** is added later; the menu actions stay as its keyboard and single-pointer alternative.
 - There is one implicit workspace. A `Workspace` entity is added only if multiple workspaces become a requirement.

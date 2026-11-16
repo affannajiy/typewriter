@@ -12,9 +12,9 @@
   flex: 1;
   min-height: 20rem;
   padding-block: 0.5rem;
-  font-family: var(--font-serif);
-  font-size: 1.125rem;
-  line-height: 1.7;
+  font-family: var(--tn-text-font, var(--font-serif));
+  font-size: var(--tn-text-size, 1.125rem);
+  line-height: var(--tn-leading, 1.7);
   color: var(--tn-text);
   overflow-wrap: break-word;
   outline: none;
@@ -89,7 +89,7 @@
   display: grid;
   place-items: center;
   /* One line of text high, so the box sits on the first line. */
-  height: 1.7em;
+  height: calc(var(--tn-leading, 1.7) * 1em);
   min-width: 1.5rem;
   cursor: pointer;
   user-select: none;
@@ -190,4 +190,165 @@
   .tn-toolbar {
     top: 0;
   }
+}
+
+/*
+ * Typography settings. The page screen sets the data attributes from
+ * Settings → Writing; everything below reads the variables.
+ * --tn-line is one line of page text: the pitch of the paper's ruling.
+ */
+.tn-page {
+  --tn-text-font: var(--font-serif);
+  --tn-text-size: 1.125rem;
+  --tn-leading: 1.7;
+  --tn-column: 48rem;
+  --tn-line: calc(var(--tn-text-size) * var(--tn-leading));
+}
+.tn-page[data-font='sans'] {
+  --tn-text-font: var(--font-sans);
+}
+.tn-page[data-font='mono'] {
+  --tn-text-font: var(--font-mono);
+}
+.tn-page[data-size='small'] {
+  --tn-text-size: 1rem;
+}
+.tn-page[data-size='large'] {
+  --tn-text-size: 1.25rem;
+}
+.tn-page[data-size='xlarge'] {
+  --tn-text-size: 1.5rem;
+}
+.tn-page[data-leading='tight'] {
+  --tn-leading: 1.5;
+}
+.tn-page[data-leading='loose'] {
+  --tn-leading: 2;
+}
+.tn-page[data-width='narrow'] {
+  --tn-column: 38rem;
+}
+.tn-page[data-width='wide'] {
+  --tn-column: 60rem;
+}
+
+/*
+ * Paper ruling. One pattern, one line of text high, so the rules sit under
+ * the lines. In the continuous layout it is drawn on the text itself; on
+ * sheets, inside each sheet's margins (see RichEditor).
+ */
+.tn-page[data-paper='lined'] {
+  --tn-ruling: linear-gradient(to bottom, transparent calc(var(--tn-line) - 1px), var(--tn-rule) 0);
+  --tn-ruling-size: 100% var(--tn-line);
+}
+.tn-page[data-paper='grid'] {
+  --tn-ruling: linear-gradient(to bottom, transparent calc(var(--tn-line) - 1px), var(--tn-rule) 0), linear-gradient(to right, transparent calc(var(--tn-line) - 1px), var(--tn-rule) 0);
+  --tn-ruling-size: var(--tn-line) var(--tn-line);
+}
+.tn-page[data-paper='dotted'] {
+  --tn-ruling: radial-gradient(circle, var(--tn-rule-dot) 1.25px, transparent 1.75px);
+  --tn-ruling-size: var(--tn-line) var(--tn-line);
+  /* A dot at the foot of each line, not in the middle of the letters. */
+  --tn-ruling-position: calc(var(--tn-line) / -2) calc(var(--tn-line) / 2);
+}
+.tn-page:not([data-paper='plain']) [data-layout='continuous'] .tn-editor > .tn-prose,
+.tn-page:not([data-paper='plain']) .tn-sheet::before {
+  background-image: var(--tn-ruling);
+  background-size: var(--tn-ruling-size);
+  background-position: var(--tn-ruling-position, 0 0);
+  background-origin: content-box;
+  background-clip: content-box;
+}
+.tn-sheet::before {
+  content: '';
+  position: absolute;
+  inset: var(--tn-sheet-margin, 0);
+  pointer-events: none;
+}
+
+/*
+ * On ruled paper every block is a whole number of lines high, so the text
+ * below a heading, a code block or a drawing still sits on the rules.
+ */
+.tn-page:not([data-paper='plain']) .tn-prose {
+  container-type: inline-size;
+}
+.tn-page:not([data-paper='plain']) .tn-prose > * {
+  margin-bottom: var(--tn-line);
+}
+.tn-page:not([data-paper='plain']) .tn-prose :is(h1, h2, h3) {
+  padding-top: 0;
+  margin-bottom: 0;
+  line-height: var(--tn-line);
+}
+.tn-page:not([data-paper='plain']) .tn-prose h1 {
+  line-height: calc(var(--tn-line) * 2);
+}
+.tn-page:not([data-paper='plain']) .tn-prose pre {
+  line-height: var(--tn-line);
+  padding-block: calc(var(--tn-line) / 2);
+  border-width: 0;
+  box-shadow: inset 0 0 0 1px var(--tn-border);
+}
+.tn-page:not([data-paper='plain']) .tn-prose hr {
+  height: 0;
+  margin-bottom: calc(var(--tn-line) - 1px);
+}
+/* The drawing's figure sits inside the editor's node-view wrapper, the block itself. */
+.tn-page:not([data-paper='plain']) .tn-prose .tn-drawing {
+  margin-block: 0;
+  border-width: 0;
+  box-shadow: 0 0 0 1px var(--tn-border);
+}
+/* The drawing's preview is rounded up to whole lines; the button bar is two lines. */
+.tn-page:not([data-paper='plain']) .tn-drawing > :first-child {
+  height: round(up, calc(100cqw * var(--tn-drawing-ratio, 0.6)), var(--tn-line));
+}
+.tn-page:not([data-paper='plain']) .tn-drawing > p:first-child {
+  display: grid;
+  place-items: center;
+  padding-block: 0;
+  height: calc(var(--tn-line) * 3);
+}
+.tn-page:not([data-paper='plain']) .tn-drawing > :last-child:not(:first-child) {
+  height: calc(var(--tn-line) * 2);
+  align-items: center;
+  padding-block: 0;
+}
+
+/*
+ * Focus mode: only the page and its footer stay. The page screen sets
+ * data-focus on the root while it is on.
+ */
+:root[data-focus] [data-chrome],
+:root[data-focus] .tn-toolbar {
+  display: none !important;
+}
+:root[data-focus] .tn-page-footer {
+  bottom: 0;
+}
+.tn-prose > *,
+.tn-drawing > * {
+  transition: opacity var(--tn-motion);
+}
+/* A drawing keeps its card opaque, so the paper's rules never show through it: only its contents fade. */
+:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > :not(.has-focus, .node-drawing),
+:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > .node-drawing:not(.has-focus) .tn-drawing > * {
+  opacity: 0.35;
+}
+
+/* Notebook covers: a pattern pressed into the cloth. Colours are the cover's own, lightened or shaded. */
+.tn-cover[data-kind='linen'] {
+  background-image: repeating-linear-gradient(0deg, var(--tn-cover-light) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, var(--tn-cover-shade) 0 1px, transparent 1px 3px);
+}
+.tn-cover[data-kind='stripes'] {
+  background-image: repeating-linear-gradient(135deg, var(--tn-cover-light) 0 6px, transparent 6px 16px);
+}
+.tn-cover[data-kind='dots'] {
+  background-image: radial-gradient(var(--tn-cover-light) 1.5px, transparent 2px);
+  background-size: 12px 12px;
+}
+.tn-cover[data-kind='grid'] {
+  background-image: linear-gradient(var(--tn-cover-light) 1px, transparent 1px), linear-gradient(90deg, var(--tn-cover-light) 1px, transparent 1px);
+  background-size: 14px 14px;
 }

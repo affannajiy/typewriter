@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Files, Pin, ScrollText, Star, Trash2, TriangleAlert, Volume2, VolumeX } from 'lucide-react';
+import { Files, Maximize, Minimize, Pin, ScrollText, Star, Trash2, TriangleAlert, Volume2, VolumeX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Button, IconButton, cx } from '@/components/ui/Button';
@@ -9,6 +9,7 @@ import { writeSetting } from '@/database/repositories/settings';
 import { restoreBatch } from '@/database/repositories/trash';
 import { DrawingEditor } from '@/features/drawing/DrawingEditor';
 import { RichEditor } from '@/features/editor/RichEditor';
+import { formatShortcut } from '@/features/editor/commands';
 import { isReadableDoc } from '@/features/editor/extensions';
 import { ItemMenu } from '@/features/organisation/ItemMenu';
 import { TagPicker } from '@/features/organisation/TagPicker';
@@ -71,6 +72,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
   const [status, setStatus] = useState<SaveStatus>({ state: 'idle', savedAt: page.updatedAt, error: null });
   const [sheets, setSheets] = useState(1);
   const [openDrawing, setOpenDrawing] = useState<string | null>(null);
+  const [focus, setFocus] = useState(false);
   const saver = useRef<Autosaver<Draft> | null>(null);
   const latestDraft = useRef(draft);
   const inTrash = page.deletedAt !== null;
@@ -110,6 +112,32 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
     };
   }, [page.id]);
 
+  // Focus mode hides the application around the page (see editor.css). It ends with the page.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (focus) root.dataset.focus = 'on';
+    else delete root.dataset.focus;
+    return () => {
+      delete root.dataset.focus;
+    };
+  }, [focus]);
+
+  // Ctrl/Cmd + Shift + F turns focus mode on and off; Escape leaves it.
+  // Heard before the editor, whose own keymap claims Escape. While a menu,
+  // the slash menu or a dialog is open, Escape belongs to that instead.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setFocus((on) => !on);
+      } else if (event.key === 'Escape' && !document.querySelector('dialog[open], [role="menu"], [role="listbox"]')) {
+        setFocus(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
   // The editor calls this from a handler that was set up once, so it reads the draft from a ref.
   const change = useCallback(
     (patch: Partial<Draft>) => {
@@ -139,8 +167,16 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
   const paginated = page.layout === 'paginated';
 
   return (
-    <article className={cx('mx-auto flex min-h-[calc(100dvh-10rem)] w-full flex-col', paginated ? 'max-w-[51rem]' : 'max-w-3xl')}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <article
+      className={cx('tn-page mx-auto flex min-h-[calc(100dvh-10rem)] w-full flex-col', paginated ? 'max-w-[51rem]' : 'max-w-(--tn-column)')}
+      data-font={settings.editorFont}
+      data-size={settings.editorSize}
+      data-leading={settings.editorLeading}
+      data-width={settings.editorWidth}
+      data-paper={settings.paperStyle}
+      data-dim={settings.focusDim ? '' : undefined}
+    >
+      <div data-chrome className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Breadcrumbs items={crumbsFor(page, workspace)} />
         {!inTrash && (
           <div className="ms-auto flex items-center">
@@ -186,7 +222,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
       />
 
       {!inTrash && (
-        <div className="mt-2 mb-4">
+        <div data-chrome className="mt-2 mb-4">
           <TagPicker tags={workspace.tags} selected={page.tagIds} onChange={(tagIds) => void guarded(() => setPageTags(page.id, tagIds))} />
         </div>
       )}
@@ -203,6 +239,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
           onPageCount={setSheets}
           pageId={page.id}
           onOpenDrawing={setOpenDrawing}
+          textMetrics={`${settings.editorFont} ${settings.editorSize} ${settings.editorLeading} ${settings.paperStyle}`}
         />
       ) : (
         // The stored text, exactly as it is. Nothing on this screen can change the page.
@@ -211,7 +248,13 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
 
       {openDrawing && !locked && <DrawingEditor drawingId={openDrawing} pageId={page.id} onClose={() => setOpenDrawing(null)} />}
 
-      <footer className="sticky bottom-16 z-10 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line bg-bg py-2 text-xs text-muted md:bottom-0">
+      {focus && (
+        <p role="status" className="sr-only">
+          {t.page.focusHint(formatShortcut('Mod+Shift+F'))}
+        </p>
+      )}
+
+      <footer className="tn-page-footer sticky bottom-16 z-10 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line bg-bg py-2 text-xs text-muted md:bottom-0">
         <SaveIndicator status={status} onRetry={() => void saver.current?.flush()} />
         <div className="flex flex-wrap items-center gap-2">
           <p>
@@ -232,6 +275,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
             />
           )}
           {!inTrash && <IconButton icon={settings.typingSound ? Volume2 : VolumeX} pressed={settings.typingSound} label={t.sound.toggle} onClick={toggleSound} />}
+          <IconButton icon={focus ? Minimize : Maximize} pressed={focus} label={t.page.focus} title={`${t.page.focus} (${formatShortcut('Mod+Shift+F')})`} onClick={() => setFocus(!focus)} />
         </div>
       </footer>
     </article>

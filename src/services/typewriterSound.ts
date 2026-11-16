@@ -19,7 +19,12 @@
  *   slides back along its rail, and it hits the margin stop.
  * - paper: the platen knob is turned to feed a sheet, then the paper bail
  *   snaps down.
+ *
+ * Three machines share these events and differ in build: how big and heavy
+ * the parts are, how long they ring, how far the carriage runs.
  */
+
+import type { SoundMachine } from '@/features/settings/model';
 
 export type SoundKind = 'key' | 'space' | 'backspace' | 'shiftDown' | 'shiftUp' | 'bell' | 'return' | 'paper';
 
@@ -51,8 +56,36 @@ export function soundForInput(inputType: string, data: string | null): 'key' | '
   }
 }
 
+/** What makes one machine sound unlike another. */
+export interface MachineVoice {
+  /** Multiplies every pitch: smaller parts sound higher. */
+  pitch: number;
+  /** Multiplies the low thumps: the mass of the frame and the carriage. */
+  weight: number;
+  /** Multiplies how long every part rings. */
+  decay: number;
+  /** Share of the sound that rings through the machine's body. */
+  body: number;
+  /** Multiplies how long the carriage takes to run back. */
+  carriage: number;
+  /** Pitch of the margin bell, in hertz. */
+  bell: number;
+}
+
+export const MACHINES: Record<SoundMachine, MachineVoice> = {
+  /** A manual desk typewriter: the original model. */
+  desk: { pitch: 1, weight: 1, decay: 1, body: 0.22, carriage: 1, bell: 2250 },
+  /** A portable in a case: light parts, a thin shell, a short carriage, a small bright bell. */
+  portable: { pitch: 1.28, weight: 0.5, decay: 0.7, body: 0.1, carriage: 0.75, bell: 2900 },
+  /** A heavy standard office machine: a cast frame, a long carriage, a deep bell. */
+  office: { pitch: 0.8, weight: 1.4, decay: 1.3, body: 0.34, carriage: 1.25, bell: 1800 },
+};
+
 interface Engine {
   context: BaseAudioContext;
+  machine: MachineVoice;
+  /** The body resonance's level, set from the machine. Null where the browser has no convolver. */
+  body: GainNode | null;
   /** Sets the volume. Everything passes through it. */
   master: GainNode;
   /** Where voices connect. Feeds the master directly and through the body resonance. */
@@ -64,10 +97,7 @@ interface Engine {
 const HEADROOM = 0.7;
 /** Shortest gap between two strikes, so a held key does not become a buzz. */
 const MIN_GAP_MS = 18;
-/** Share of the sound that also rings through the machine's metal body. */
-const BODY_MIX = 0.22;
-
-function buildEngine(context: BaseAudioContext): Engine {
+function buildEngine(context: BaseAudioContext, machine: MachineVoice = MACHINES.desk): Engine {
   // The master gain is the first node made: the volume control.
   const master = context.createGain();
   let exit: AudioNode = context.destination;
@@ -90,6 +120,7 @@ function buildEngine(context: BaseAudioContext): Engine {
   bus.connect(master);
 
   const rate = context.sampleRate;
+  let body: GainNode | null = null;
   // The body of the machine and the desk under it: a very short, dense echo.
   if (typeof context.createConvolver === 'function') {
     const length = Math.floor(rate * 0.22);
@@ -98,20 +129,26 @@ function buildEngine(context: BaseAudioContext): Engine {
       const samples = impulse.getChannelData(channel);
       for (let i = 0; i < length; i++) samples[i] = (Math.random() * 2 - 1) * Math.exp(-i / (rate * 0.035));
     }
-    const body = context.createConvolver();
-    body.buffer = impulse;
-    const wet = context.createGain();
-    wet.gain.value = BODY_MIX;
-    bus.connect(body);
-    body.connect(wet);
-    wet.connect(master);
+    const resonance = context.createConvolver();
+    resonance.buffer = impulse;
+    body = context.createGain();
+    body.gain.value = machine.body;
+    bus.connect(resonance);
+    resonance.connect(body);
+    body.connect(master);
   }
 
   // One second of white noise; every strike reads a random slice of it.
   const noise = context.createBuffer(1, rate, rate);
   const samples = noise.getChannelData(0);
   for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-  return { context, master, bus, noise };
+  return { context, machine, body, master, bus, noise };
+}
+
+/** Switches the machine the next sounds are made on. */
+function setMachine(e: Engine, machine: MachineVoice) {
+  e.machine = machine;
+  if (e.body) e.body.gain.value = machine.body;
 }
 
 /** A value near `centre`, so that no two strikes sound identical. */
@@ -155,12 +192,13 @@ interface Burst {
 }
 
 /** A burst of filtered noise: metal on metal, metal on paper. */
-function click(e: Engine, out: AudioNode, when: number, { frequency, gain, decay, q = 1.2, type = 'bandpass' }: Burst) {
+function click(e: Engine, out: AudioNode, when: number, { frequency, gain, decay: base, q = 1.2, type = 'bandpass' }: Burst) {
+  const decay = base * e.machine.decay;
   const source = e.context.createBufferSource();
   source.buffer = e.noise;
   const filter = e.context.createBiquadFilter();
   filter.type = type;
-  filter.frequency.value = vary(frequency);
+  filter.frequency.value = vary(frequency * e.machine.pitch);
   filter.Q.value = q;
   const envelope = e.context.createGain();
   envelope.gain.setValueAtTime(gain, when);
@@ -170,12 +208,14 @@ function click(e: Engine, out: AudioNode, when: number, { frequency, gain, decay
 }
 
 /** A falling low tone: weight landing on the frame. */
-function thump(e: Engine, out: AudioNode, when: number, from: number, to: number, gain: number, decay: number) {
+function thump(e: Engine, out: AudioNode, when: number, from: number, to: number, gain: number, base: number) {
+  const { pitch, weight } = e.machine;
+  const decay = base * e.machine.decay;
   const oscillator = e.context.createOscillator();
-  oscillator.frequency.setValueAtTime(vary(from), when);
-  oscillator.frequency.exponentialRampToValueAtTime(to, when + decay);
+  oscillator.frequency.setValueAtTime(vary(from * pitch), when);
+  oscillator.frequency.exponentialRampToValueAtTime(to * pitch, when + decay);
   const envelope = e.context.createGain();
-  envelope.gain.setValueAtTime(gain, when);
+  envelope.gain.setValueAtTime(gain * weight, when);
   envelope.gain.exponentialRampToValueAtTime(0.001, when + decay);
   oscillator.connect(envelope).connect(out);
   oscillator.start(when);
@@ -183,9 +223,10 @@ function thump(e: Engine, out: AudioNode, when: number, from: number, to: number
 }
 
 /** A steady tone that dies away: a part left ringing. */
-function ring(e: Engine, out: AudioNode, when: number, frequency: number, gain: number, decay: number) {
+function ring(e: Engine, out: AudioNode, when: number, frequency: number, gain: number, base: number) {
+  const decay = base * e.machine.decay;
   const oscillator = e.context.createOscillator();
-  oscillator.frequency.value = frequency;
+  oscillator.frequency.value = frequency * e.machine.pitch;
   const envelope = e.context.createGain();
   // A two-millisecond rise: struck, not switched on.
   envelope.gain.setValueAtTime(0.0001, when);
@@ -204,8 +245,8 @@ function slide(e: Engine, out: AudioNode, when: number, duration: number, gain: 
   const filter = e.context.createBiquadFilter();
   filter.type = 'bandpass';
   filter.Q.value = 0.9;
-  filter.frequency.setValueAtTime(from, when);
-  filter.frequency.exponentialRampToValueAtTime(to, when + duration);
+  filter.frequency.setValueAtTime(from * e.machine.pitch, when);
+  filter.frequency.exponentialRampToValueAtTime(to * e.machine.pitch, when + duration);
   const envelope = e.context.createGain();
   envelope.gain.setValueAtTime(0.0001, when);
   envelope.gain.exponentialRampToValueAtTime(gain, when + duration * 0.3);
@@ -224,7 +265,8 @@ function slide(e: Engine, out: AudioNode, when: number, duration: number, gain: 
 function bell(e: Engine, when: number) {
   // The bell sits at the back left of the machine.
   const out = at(e, -0.35).node;
-  const pitch = vary(2250, 0.01);
+  // The bell has its own pitch on each machine; ring() scales by the machine's pitch, so undo that here.
+  const pitch = vary(e.machine.bell, 0.01) / e.machine.pitch;
   click(e, out, when, { frequency: 4200, gain: 0.3, decay: 0.012, q: 0.8 });
   ring(e, out, when, pitch, 0.3, 1.7);
   ring(e, out, when, pitch * 1.004, 0.14, 1.7);
@@ -253,9 +295,9 @@ function carriageReturn(e: Engine, when: number, detail: SoundDetail) {
 
   // The carriage runs back along its rail, the escapement rack buzzing past its pawl.
   const start = t + 0.1;
-  const duration = 0.1 + 0.3 * travel;
+  const duration = (0.1 + 0.3 * travel) * e.machine.carriage;
   slide(e, out, start, duration, 0.2, 700, 2100);
-  const teeth = Math.round(5 + 22 * travel);
+  const teeth = Math.round((5 + 22 * travel) * e.machine.carriage);
   for (let i = 0; i < teeth; i++) {
     // Teeth pass faster as the carriage gathers speed.
     const progress = Math.pow((i + 1) / (teeth + 1), 0.75);
@@ -365,7 +407,7 @@ const REPEATING: ReadonlySet<SoundKind> = new Set(['key', 'space', 'backspace'])
  * the browser has no Web Audio or refuses to start it: sound is decoration and
  * must not interrupt writing.
  */
-export function playTypewriterSound(kind: SoundKind, volume: number, detail: SoundDetail = {}): void {
+export function playTypewriterSound(kind: SoundKind, volume: number, detail: SoundDetail = {}, machine: SoundMachine = 'desk'): void {
   if (volume <= 0) return;
   try {
     const e = getEngine();
@@ -379,6 +421,7 @@ export function playTypewriterSound(kind: SoundKind, volume: number, detail: Sou
     // Browsers start audio suspended until the user acts; typing is such an act.
     if (context.state === 'suspended') void context.resume().catch(() => undefined);
     e.master.gain.value = (Math.min(volume, 100) / 100) * HEADROOM;
+    setMachine(e, MACHINES[machine] ?? MACHINES.desk);
     voices[kind](e, context.currentTime + 0.001, detail);
   } catch {
     // Decoration only.
@@ -397,10 +440,10 @@ export function isTypewriterSoundReady(): boolean {
  * Renders one sound to a buffer without playing it, at full volume.
  * For tuning and for tests that measure the result.
  */
-export async function renderTypewriterSound(kind: SoundKind, detail: SoundDetail = {}, seconds = 2.5): Promise<AudioBuffer> {
+export async function renderTypewriterSound(kind: SoundKind, detail: SoundDetail = {}, seconds = 2.5, machine: SoundMachine = 'desk'): Promise<AudioBuffer> {
   const rate = 44100;
   const context = new OfflineAudioContext(2, Math.floor(rate * seconds), rate);
-  const e = buildEngine(context);
+  const e = buildEngine(context, MACHINES[machine]);
   e.master.gain.value = HEADROOM;
   voices[kind](e, 0.01, detail);
   return context.startRendering();

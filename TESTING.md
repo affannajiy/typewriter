@@ -1,7 +1,7 @@
 # Testing
 
-**Last run:** 2026-11-17 — typecheck clean, lint clean, 292 unit and component tests passed, 20
-end-to-end tests passed (10 journeys × desktop and mobile), production build succeeded.
+**Last run:** 2026-11-17 — typecheck clean, lint clean, 316 unit and component tests passed, 22
+end-to-end tests passed (11 journeys × desktop and mobile), production build succeeded.
 
 ## How to run
 
@@ -39,15 +39,17 @@ shared controls. One end-to-end test per critical journey; variations are tested
 | --- | --- |
 | `src/database/repositories/repositories.test.ts` | Folders (create, rename, nest, cycle refusal), notebooks (edit and move without touching pages, invalid colour), pages (draft save, plain text, missing page fails loudly, move keeps ID, open is not an edit, reorder), tags (case-insensitive reuse, delete strips references), trash (subtree batch, exact restore, restore when the parent is gone, permanent delete only of trashed rows) |
 | `src/database/repositories/drawings.test.ts` | Drawings: created by the first save, updated with a revision, height bounded; a copy gets its own strokes, once, and only from a drawing that exists; kept through Trash and restore; deleted with the page by a permanent delete or by emptying the Trash, and only then. Schema version 2: a version 1 database opens with its pages and settings intact and an empty `drawings` table |
+| `src/database/repositories/writing.test.ts` | Words written: a save adds what it made longer, deleting does not subtract, the title does not count; per calendar day and in date order; a failed save counts nothing. `summariseWriting`: streak from today, kept while today is empty, broken by a gap; seven days with empty days as zero. Notebook finishes and icons: defaults, kept on an edit that leaves them out, unknown values refused. Backups: covers, icons and days round trip; a merge keeps this device's day unless asked for newer; an older file restores; a bad day, finish or icon rejects the file and says where. Schema version 3: a version 2 database opens with its notebook (now `icon: null`) and drawing intact and an empty `writingDays` |
 | `src/database/backup/backup.test.ts` | Drawings saved and restored with their page; a backup from before drawings restores; a damaged stroke (unknown ink, uneven points, a non-number) rejects the file and says where. Round trip into an empty workspace including Trash and settings; the three restore modes; undo of a replace; a failure in the middle of a replace leaves the workspace untouched; dangling references and folder cycles repaired; rejection of non-JSON, foreign files, newer versions, wrong types (with the path), invalid colours, duplicate IDs, prototype keys; unknown fields and settings dropped |
 | `src/services/autosave.test.ts` | Debounce; "saved" only after the write resolves; no overlapping writes; an edit during a write is not reported as saved; a failed write keeps its value and retries; flush; dispose writes outstanding text |
-| `src/services/typewriterSound.test.ts` | Which edit plays which sound (typing, space, Enter, delete; paste, cut, undo silent); every sound builds; the bell rings alone, and with the carriage return only when asked; a longer line gives a longer return; no error without Web Audio, without panner, reverb or limiter, or when audio fails; one shared audio context; volume; silent at volume 0; a held key does not buzz but shift and return always play; sound settings validation; margin bell and wrap decisions (`carriageEvents`) |
+| `src/services/typewriterSound.test.ts` | Each machine has its own bell, and a longer carriage passes more rack teeth (office > desk > portable); an unknown machine plays the desk machine; the machine setting defaults to desk. Which edit plays which sound (typing, space, Enter, delete; paste, cut, undo silent); every sound builds; the bell rings alone, and with the carriage return only when asked; a longer line gives a longer return; no error without Web Audio, without panner, reverb or limiter, or when audio fails; one shared audio context; volume; silent at volume 0; a held key does not buzz but shift and return always play; sound settings validation; margin bell and wrap decisions (`carriageEvents`) |
 | `src/styles/tokens.test.ts` | Reads `tokens.css` and checks WCAG contrast for every theme: 4.5:1 for text pairs, 3:1 for borders, focus, accent and the red, blue and green drawing inks |
 | `src/features/drawing/geometry.test.ts` | Stroke outlines; partial erase (a cut stroke becomes two and the first keeps its ID; full erase; nothing touched returns the same list; a cut between two far-apart points); lasso inside test and the half-inside rule; move only the selection; scale around a corner with the width; scale limits; bounds; undo and redo, and a new change clears redo |
 | `src/features/drawing/DrawingEditor.test.tsx` | The full-screen editor: draws a stroke and shows "Saved" only after the write; tool, ink and width are used; highlighter is translucent; undo and redo from buttons and keys; after a pen, touch does not draw; lasso selects, delete removes, undo brings it back; a stored drawing opens as it was; "Add space below"; Done writes before closing |
 | `src/features/editor/editor.test.ts` | Old plain-text pages load unchanged; opening is not an edit; unreadable documents (unknown node, unknown mark, forbidden structure) are refused; block IDs (fill, keep, replace repeats, nested, split, round trip, new content); block operations (find, move with ID and caret, edges, duplicate with new IDs, delete and undo as one step, last block); commands (turn into and back keeping the ID, out of a list, between list kinds, marks, divider, undo availability); slash-menu filter; shortcut labels; plain text of rich documents; drawing blocks (in the schema, carry a block ID, add no text; a duplicate gets its own drawing ID and asks for a copy, and undo removes it; the insert command opens the new drawing, but asking whether it could run does not; Enter on a selected drawing opens it); page-break arithmetic (`paginate`) including the property that no block that fits ever crosses a sheet edge; sheet scaling |
 | `src/features/editor/screens.test.tsx` | The editor on screen: shows a stored page and reports no change on opening; toolbar formats and reports the new document; the toolbar is one tab stop with arrow-key movement; every toolbar button is named and toggles report their state; block menu (disabled entries, move, duplicate, delete, Undo); a page in the Trash is not editable and has no toolbar. Page layout stored as an edit only when it changes; paper settings validation. Command palette: finds a page by its text, shows snippet and location, opens it with Enter; lists destinations and moves with arrow keys; says when nothing matches |
 | `src/features/search/search.test.ts` | Empty query; match in text; match in names of pages, notebooks and folders; every word required; case and accents ignored; name matches before text matches, newer before older, exact name first; location of each result; snippets; limit; the query is plain text, not a pattern; query length bound |
+| `src/features/pages/atmosphere.test.tsx` | Writing settings: defaults and refusal of unknown values; applied to the page as they change. Focus mode: from the button, from Ctrl + Shift + F, Escape leaves, it ends with the page; "fade" only when wanted. Settings screen: typeface, ruling and machine stored and shown in the sample; the daily goal is stored only when valid, typing is never overwritten by a late write, leaving the field restores the stored goal. The desk's summary: today against the goal, streak, words in pages, seven days with text for each; no goal; goal reached |
 | `src/components/ui/ui.test.tsx` | Button loading state, icon button name and pressed state, Menu keyboard pattern, ConfirmDialog initial focus on the safe choice, settings validation, appearance applied to the document, plain-text document round trip, word and character counts |
 
 ## End-to-end tests (Playwright, Chromium, desktop and Pixel 7)
@@ -64,6 +66,7 @@ shared controls. One end-to-end test per critical journey; variations are tested
 8. **Search finds a page by its text from any screen, and the palette runs commands.** Ctrl/Cmd + K from Settings, a hit with snippet and location, Enter opens the page; the Search button; "nothing matches"; Escape; a formatting command from the palette, after which typing continues in the text.
 9. **The sheets layout breaks the text into pages, and the paper settings apply.** No block is cut by a sheet edge, also after text is added above a break and after a reload; the sheet count is shown; Letter paper and wide margins change the sheet's shape and margins.
 10. **A drawing is made in a page, saved, reopened and downloaded as an image.** `/draw` adds a drawing and opens it; two strokes drawn with the mouse, one in red; the eraser cuts the red one in two; "Saved"; the PNG download has the right name; Done shows the preview and the word count is unchanged; after a reload the preview is there, and opening it with a click adds no stroke; Escape closes.
+11. **The writing atmosphere.** Typewriter typeface, large text, lined paper and a goal of 10 words in Settings; a notebook edited to stripes and a leaf icon, which survive a reload; a page with paragraphs and a heading in JetBrains Mono at 20 px on a ruled background, where every block starts exactly on a rule; focus mode hides the toolbar and all navigation, typing goes on, Escape brings them back and the text is saved; the desk says the goal is reached and shows seven days.
 
 ## Not tested, or tested by hand only
 
@@ -85,7 +88,11 @@ shared controls. One end-to-end test per critical journey; variations are tested
 | 320 px width and 200% text zoom | Not checked. Narrowest tested width is 375 px |
 | Ctrl/Cmd + S, save on tab hide, close-while-unsaved warning | Implemented, not automated |
 | Storage quota exceeded, storage unavailable | Messages exist. Not reproduced in a real browser |
-| Database migration | Version 1 to 2 is unit-tested with fake-indexeddb. Not run against a real browser database written by 0.3.0 |
+| Database migration | Versions 1 to 3 and 2 to 3 are unit-tested with fake-indexeddb. Not run against a real browser database written by 0.4.0 |
+| How the portable and office machines sound | Not judged by ear. The differences are unit-tested as numbers (bell pitch, carriage length) |
+| Ruled paper on sheets, dotted and squared ruling, the three typefaces in every theme | Lined paper in the continuous layout is measured end to end. The rest was looked at by hand in Chromium, dark theme only |
+| Focus mode's fading | The marking is CSS on Tiptap's Focus extension; looked at by hand. The test checks the attribute only |
+| Words written across midnight, and a clock change | Days are local calendar days; unit-tested with fixed dates, not with a real clock change |
 | Drawing with a real stylus, pressure, palm rejection on a tablet | Not run. Tested with simulated pen events only |
 | Dragging a lasso selection to move or resize it | Checked by hand in Chromium (moves exactly as far as dragged). The maths is unit-tested; the drag is not automated |
 | A drawing with thousands of strokes | Not measured |
@@ -97,6 +104,13 @@ shared controls. One end-to-end test per critical journey; variations are tested
 A flaky test is fixed or quarantined the day it is found. One was found in Milestone 2 (a radio
 button checked before its database write landed) and fixed by waiting on the stored state; the
 end-to-end helper `choose()` now does that for every radio button.
+
+Milestone 5's checks found three defects before release: the daily-goal field could overwrite what
+was being typed with a value stored a moment earlier; Escape did not leave focus mode in a real
+browser, because the editor's keymap claims it (a test's synthetic key had no key code, so it got
+through); and on ruled paper the text below a drawing sat off the rules (the drawing's figure is
+inside a wrapper the selector missed). A fourth, not in the product: the development server kept
+serving an old copy of three files changed in place by a shell command.
 
 Milestone 4's checks found two defects before release: moving a selection went twice as far as the
 drag in development (a side effect inside a React state updater, which StrictMode runs twice), and a

@@ -38,6 +38,7 @@ src/
     dashboard/  library/  pages/  tags/  trash/  settings/
     editor/       Rich text: schema, block IDs, commands, toolbar, slash menu, pagination
     drawing/      Drawing engine (geometry), the drawing block, the full-screen editor, PNG export
+    dashboard/    The desk, and the words-written summary (stats.ts, WritingStats)
     search/       Global search and the command palette
     organisation/ Shared item rows, menus, dialogs, actions
   hooks/          useData.ts: live queries over repositories
@@ -221,6 +222,38 @@ How it is built (`features/drawing/`):
   or images on the canvas. Drawing itself needs a pointer: keyboard users can open, undo, redo,
   delete a selection and download, but not draw.
 
+### D14. Writing atmosphere: settings as CSS variables, ruling on whole lines
+
+Milestone 5. Everything here is presentation, so it lives in settings and stylesheets, not in pages.
+
+- **Typography** (typeface, size, line spacing, column width) and **paper ruling** are app-wide
+  settings. The page screen writes them as data attributes on `.tn-page`; `editor.css` turns them
+  into variables (`--tn-text-font`, `--tn-text-size`, `--tn-leading`, `--tn-column`). One more,
+  `--tn-line`, is one line of text: the pitch of the ruling. The settings screen's sample uses the
+  same markup and styles, so it shows exactly what a page will.
+- **Ruling** is one CSS background, a line high, on the text (continuous layout) or inside each
+  sheet's margins (sheets). For it to sit under the text, every block must be a whole number of
+  lines high. On ruled paper the stylesheet makes that so: block spacing is one line, headings and
+  code blocks get line heights in whole lines, and a drawing's preview is rounded up with CSS
+  `round()` and container units. No script measures anything. Where `round()` is missing (older
+  browsers) the text below a drawing drifts off the rules; nothing else changes.
+- **The sheets are measured again** when the typeface, size, spacing or ruling changes, and once
+  more when the fonts have loaded, so page breaks follow the new line height.
+- **Focus mode** is a state of the page screen, not a setting: it sets `data-focus` on the root,
+  and the stylesheet hides everything marked `data-chrome` (sidebar, top bar, bottom bar, the
+  page's breadcrumbs and tags) and the toolbar. Tiptap's Focus extension marks the top-level block
+  holding the caret; the others fade when "Fade other blocks" is on. Escape is heard in the capture
+  phase, because the editor's own keymap claims it; while a menu, the slash menu or a dialog is
+  open, Escape is theirs.
+- **Covers** are a finish name and an icon name. The patterns are CSS gradients in two tokens
+  (`--tn-cover-light`, `--tn-cover-shade`) over the cover's colour; the title colour is still
+  computed from that colour. No image is stored or loaded.
+- **Sound machines** are parameter sets for one synthesiser (`MACHINES` in `typewriterSound.ts`):
+  pitch, mass, ring time, body resonance, carriage length and bell pitch. A new machine is a new
+  row, not new code. Still no audio files.
+- **Words written** are counted by the page repository inside the save transaction
+  (`writingDays`, DATA_MODEL.md). The dashboard reads them; nothing is sent anywhere.
+
 ## Security and privacy posture
 
 - No network requests after load. No analytics, no third-party scripts, fonts bundled.
@@ -234,9 +267,10 @@ How it is built (`features/drawing/`):
 | Item | Note |
 | --- | --- |
 | ESLint has no type-aware rules | It parses TypeScript with Babel, because typescript-eslint needs the TypeScript 5/6 compiler API and the project uses TypeScript 7. Move to typescript-eslint when it supports 7. |
+| Ruled paper aligns only blocks the stylesheet knows (text, headings, lists, quotes, code, dividers, drawings) | A future block type must be given whole-line heights, or the text below it drifts off the rules (D14). |
 | A drawing whose block was deleted stays until its page is deleted permanently | Needed for undo (D13). Page purge is the only cleanup. |
 | No service worker | The app needs the network to load. PWA and offline shell are Milestone 8. |
-| Initial JS is 487 kB (153 kB gzip); the editor and drawing are a second file of 485 kB (157 kB gzip), loaded with the first page | Only the page screen is split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
+| Initial JS is 504 kB (158 kB gzip); the editor and drawing are a second file of 487 kB (158 kB gzip), loaded with the first page | Only the page screen is split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
 | Sidebar is not resizable | It collapses to icons. Resizable panels are deferred. |
 | Tooltips are native `title` | No custom tooltip component yet. Icon-only buttons also carry `aria-label`. |
 | Backup is a single JSON string in memory | Fine for text. Binary attachments (Milestone 6) need a streamed or zipped format. |

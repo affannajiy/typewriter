@@ -3,6 +3,39 @@
 Versions follow [Semantic Versioning](https://semver.org/). Before 1.0.0, the public contracts are
 the database schema and the backup file format; both carry their own version numbers.
 
+## 0.5.0 — 2026-11-17
+
+Milestone 5 (Writing atmosphere).
+
+### Added
+
+- Settings → Writing: the page text's typeface (Book: Lora, Clean: Inter, Typewriter: JetBrains
+  Mono), size, line spacing and column width, with a live sample.
+- Paper ruling: plain, lined, squared or dotted, in both layouts. On ruled paper every block is a
+  whole number of lines high, so the text stays on the rules, also below headings, code and
+  drawings.
+- Focus mode: the button under a page, or Ctrl/Cmd + Shift + F. Only the page and its save status
+  stay; Escape leaves. "Fade other blocks" (on by default) leaves the paragraph being written at
+  full strength.
+- Notebook covers: five finishes (plain cloth, linen, stripes, dots, grid) and twelve icons, in the
+  notebook's details.
+- Three typewriter machines for the sounds: desk (as before), portable and office.
+- "Your writing" on the desk: words written today, a daily goal (Settings → Writing), the streak of
+  days, the words in all pages, and the last seven days as bars, with text for each day.
+- 24 more unit and component tests and 1 more end-to-end journey (316 unit, 11 journeys).
+
+### Changed
+
+- Database schema version 3: a `writingDays` table, and notebooks gain `icon`. Opening the app
+  upgrades the database; existing notebooks get no icon, nothing else changes.
+- Backups hold the words-written days and the new cover fields. Backups made by earlier versions
+  still restore. A backup made by 0.5.0 is refused by earlier versions, which ask to be updated.
+
+### Known limits
+
+- Typography and ruling are one setting for all pages. Words written counts what saves add, per
+  device, from 0.5.0 on. See DEVELOPMENT_ROADMAP.md, Milestone 5.
+
 ## 0.4.0 — 2026-11-17
 
 Milestone 4 (Drawing).

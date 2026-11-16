@@ -34,7 +34,35 @@ export interface AppSettings {
   /** Paper for the paginated layout. One choice for every page, for now. */
   pageSize: 'a4' | 'letter' | 'a5';
   pageMargin: 'narrow' | 'normal' | 'wide';
+  /** Typeface of the page text: Lora, Inter, or JetBrains Mono. */
+  editorFont: EditorFont;
+  editorSize: EditorSize;
+  editorLeading: EditorLeading;
+  /** Width of the text column in the continuous layout. Sheets have the paper's width. */
+  editorWidth: EditorWidth;
+  /** Rules printed on the paper, in both layouts. */
+  paperStyle: PaperStyle;
+  /** In focus mode, fade every block except the one being written. */
+  focusDim: boolean;
+  /** Which typewriter the sounds model. */
+  soundMachine: SoundMachine;
+  /** Words to write each day, shown on the dashboard. 0: no goal. */
+  dailyGoal: number;
 }
+
+export const EDITOR_FONTS = ['serif', 'sans', 'mono'] as const;
+export type EditorFont = (typeof EDITOR_FONTS)[number];
+export const EDITOR_SIZES = ['small', 'medium', 'large', 'xlarge'] as const;
+export type EditorSize = (typeof EDITOR_SIZES)[number];
+export const EDITOR_LEADINGS = ['tight', 'normal', 'loose'] as const;
+export type EditorLeading = (typeof EDITOR_LEADINGS)[number];
+export const EDITOR_WIDTHS = ['narrow', 'normal', 'wide'] as const;
+export type EditorWidth = (typeof EDITOR_WIDTHS)[number];
+export const PAPER_STYLES = ['plain', 'lined', 'grid', 'dotted'] as const;
+export type PaperStyle = (typeof PAPER_STYLES)[number];
+export const SOUND_MACHINES = ['desk', 'portable', 'office'] as const;
+export type SoundMachine = (typeof SOUND_MACHINES)[number];
+export const MAX_DAILY_GOAL = 20_000;
 
 export type SettingKey = keyof AppSettings;
 
@@ -52,6 +80,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   soundBell: 'return',
   pageSize: 'a4',
   pageMargin: 'normal',
+  editorFont: 'serif',
+  editorSize: 'medium',
+  editorLeading: 'normal',
+  editorWidth: 'normal',
+  paperStyle: 'plain',
+  focusDim: true,
+  soundMachine: 'desk',
+  dailyGoal: 0,
 };
 
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as SettingKey[];
@@ -75,6 +111,14 @@ const validators: { [K in SettingKey]: (v: unknown) => v is AppSettings[K] } = {
   soundBell: oneOf(['return', 'margin', 'off']),
   pageSize: oneOf(['a4', 'letter', 'a5']),
   pageMargin: oneOf(['narrow', 'normal', 'wide']),
+  editorFont: oneOf(EDITOR_FONTS),
+  editorSize: oneOf(EDITOR_SIZES),
+  editorLeading: oneOf(EDITOR_LEADINGS),
+  editorWidth: oneOf(EDITOR_WIDTHS),
+  paperStyle: oneOf(PAPER_STYLES),
+  focusDim: (v): v is boolean => typeof v === 'boolean',
+  soundMachine: oneOf(SOUND_MACHINES),
+  dailyGoal: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MAX_DAILY_GOAL,
 };
 
 export function isValidSetting<K extends SettingKey>(key: K, value: unknown): value is AppSettings[K] {

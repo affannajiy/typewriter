@@ -164,7 +164,7 @@ export function AppShell() {
         {t.nav.skip}
       </a>
 
-      <nav aria-label={t.nav.main} className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col border-e border-line bg-sunken p-3 transition-[width] duration-(--tn-motion) md:flex', collapsed ? 'w-16' : 'w-60')}>
+      <nav data-chrome aria-label={t.nav.main} className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col border-e border-line bg-sunken p-3 transition-[width] duration-(--tn-motion) md:flex', collapsed ? 'w-16' : 'w-60')}>
         <div className={cx('mb-4 flex items-center', collapsed ? 'justify-center' : 'justify-between ps-2')}>
           <Brand hidden={collapsed} />
           <IconButton icon={PanelLeft} label={collapsed ? t.nav.expandSidebar : t.nav.collapseSidebar} aria-expanded={!collapsed} onClick={() => void writeSetting('sidebarCollapsed', !collapsed)} />
@@ -173,7 +173,7 @@ export function AppShell() {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-(--tn-topbar) items-center gap-2 border-b border-line bg-sunken px-2 md:hidden">
+        <header data-chrome className="sticky top-0 z-20 flex h-(--tn-topbar) items-center gap-2 border-b border-line bg-sunken px-2 md:hidden">
           <IconButton icon={MenuIcon} label={t.nav.openMenu} aria-haspopup="dialog" onClick={() => setDrawerOpen(true)} />
           <Brand />
           <IconButton icon={Search} label={t.nav.search} aria-haspopup="dialog" onClick={openSearch} className="ms-auto" />
@@ -183,7 +183,7 @@ export function AppShell() {
           <Outlet />
         </main>
 
-        <nav aria-label={t.nav.quick} className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-line bg-sunken md:hidden">
+        <nav data-chrome aria-label={t.nav.quick} className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-line bg-sunken md:hidden">
           <ul className="grid grid-cols-4">
             {[primary[0]!, primary[1]!].map((d) => (
               <li key={d.to}>

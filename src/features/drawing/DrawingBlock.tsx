@@ -31,6 +31,8 @@ export function DrawingBlock({ node, editor, extension, selected, updateAttribut
     <NodeViewWrapper
       as="figure"
       data-drawing-id={drawingId ?? undefined}
+      // Read by the ruled-paper styles, which round the preview up to whole lines.
+      style={{ ['--tn-drawing-ratio' as string]: height / (drawing?.width ?? DRAWING_WIDTH) }}
       className={cx('tn-drawing my-3 overflow-hidden rounded-lg border bg-surface', selected ? 'border-accent outline-2 outline-offset-2 outline-focus' : 'border-line')}
     >
       {drawing === undefined ? (

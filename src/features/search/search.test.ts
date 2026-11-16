@@ -20,7 +20,7 @@ const page = (id: string, title: string, plainText: string, extra: Partial<Page>
   lastOpenedAt: null,
   ...extra,
 });
-const notebook = (id: string, name: string, folderId: string | null = null): Notebook => ({ ...base, id, name, description: '', folderId, cover: { kind: 'solid', colour: '#000000' }, tagIds: [], favourite: false, order: 1 });
+const notebook = (id: string, name: string, folderId: string | null = null): Notebook => ({ ...base, id, name, description: '', folderId, cover: { kind: 'solid', colour: '#000000' }, icon: null, tagIds: [], favourite: false, order: 1 });
 const folder = (id: string, name: string, parentId: string | null = null): Folder => ({ ...base, id, name, parentId, order: 1 });
 
 const source: SearchSource = {

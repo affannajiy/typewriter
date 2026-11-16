@@ -1,7 +1,7 @@
 # Data Model
 
 Source: [`src/types/models.ts`](src/types/models.ts) and [`src/database/db.ts`](src/database/db.ts).
-Database name: `typenote`. Schema version: **2**. Backup format version: **1**.
+Database name: `typenote`. Schema version: **3**. Backup format version: **1**.
 
 ## Common fields
 
@@ -30,7 +30,8 @@ Database name: `typenote`. Schema version: **2**. Backup format version: **1**.
 | `name` | string, 1–200 | |
 | `description` | string, 0–1000 | |
 | `folderId` | id or null | |
-| `cover` | `{ kind: 'solid', colour: '#rrggbb' }` | More kinds in Milestone 5 |
+| `cover` | `{ kind, colour: '#rrggbb' }` | `kind` is the finish: `solid` (plain cloth), `linen`, `stripes`, `dots` or `grid`. The pattern is drawn by the interface over the colour |
+| `icon` | icon name or null | Since schema version 3. One of `book`, `feather`, `flask`, `calculator`, `globe`, `music`, `palette`, `leaf`, `heart`, `star`, `code`, `compass`. A name, never an image or markup |
 | `tagIds` | id[] | |
 | `favourite` | boolean | |
 | `order` | number | |
@@ -88,6 +89,19 @@ real pressure; `points` is a flat list of `x, y, pressure` triples (pressure 0 t
 A row is created by the drawing's first save, so an empty drawing block leaves no row. Deleting a
 drawing block from the page does not delete the row, so undo can bring it back.
 
+### `writingDays` — index: `date` (schema version 3)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `date` | `YYYY-MM-DD` | The key. The local calendar day on this device |
+| `words` | integer ≥ 0 | Words written that day |
+| `updatedAt` | number | |
+
+A page save that makes the page's text longer adds the difference in words, in the same
+transaction as the page write; a save that makes it shorter adds nothing. So the count is "words
+added", not a net change: retyping deleted text counts again, and undoing a deletion counts. The
+title is not counted. Nothing else writes this table except a restore.
+
 ### `tags` — index: `id`
 
 `name` (1–40, unique ignoring case, enforced by the repository), `colour` (`#rrggbb`).
@@ -131,12 +145,14 @@ parent is gone or trashed, the root returns to the top level and the user is tol
   "formatVersion": 1,
   "schemaVersion": 1,
   "exportedAt": "2026-11-16T11:00:00.000Z",
-  "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [], "drawings": [] }
+  "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [], "drawings": [], "writingDays": [] }
 }
 ```
 
-Includes trashed items. `drawings` is missing from files made before schema version 2; it is read
-as empty. Each stroke is checked: known tool and ink, numbers only, whole triples, at most 50,000
+Includes trashed items. `drawings` is missing from files made before schema version 2, and
+`writingDays` and notebook `icon` before version 3; they are read as empty and as no icon. A day
+must be a real `YYYY-MM-DD` key with a whole, non-negative word count, once per file. A cover
+finish or icon outside the lists above rejects the file. Each stroke is checked: known tool and ink, numbers only, whole triples, at most 50,000
 points per stroke and 20,000 strokes per drawing. Limit: 200 MB. A file with a higher `formatVersion` or `schemaVersion` than
 the app knows is refused with a message to update.
 
@@ -146,12 +162,16 @@ the app knows is refused with a message to update.
 | …and take newer | replaced if backup `updatedAt` is later | added | only missing keys added |
 | Replace everything | whole workspace replaced, after a safety snapshot | — | replaced |
 
+Words-written days follow the same rule as content, keyed by date, but are not counted in the
+restore report: they are history, not items.
+
 ## Migrations
 
 | Version | Released in | Change | Upgrade step |
 | --- | --- | --- | --- |
 | 1 | first release | First schema | — |
 | 2 | 0.4.0 | New table `drawings: 'id, pageId'` | Nothing to convert: no existing row changes. Tested by opening a version 1 database (`drawings.test.ts`) |
+| 3 | 0.5.0 | New table `writingDays: 'date'`; notebooks gain `icon` | Every notebook without `icon` gets `icon: null`. Tested by opening a version 2 database with a notebook and a drawing (`writing.test.ts`) |
 
 Never edit a released `this.version(n)` block. Add `this.version(n + 1).stores({...}).upgrade(tx => ...)`,
 bump `SCHEMA_VERSION`, add a migration test with data in the old shape, and extend

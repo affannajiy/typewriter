@@ -1,6 +1,6 @@
 import { type AnyExtension, Extension, getSchema } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
-import { Placeholder } from '@tiptap/extensions';
+import { Focus, Placeholder } from '@tiptap/extensions';
 import StarterKit from '@tiptap/starter-kit';
 import { Suggestion, type SuggestionProps } from '@tiptap/suggestion';
 import { DrawingNode, type DrawingNodeOptions } from '@/features/drawing/drawingNode';
@@ -122,6 +122,8 @@ export function editorExtensions(wiring: EditorWiring): AnyExtension[] {
   return [
     ...schemaExtensions(wiring.drawing),
     Placeholder.configure({ placeholder: t.page.bodyPlaceholder }),
+    // Marks the top-level block that holds the caret. Focus mode fades the others (editor.css).
+    Focus.configure({ className: 'has-focus', mode: 'shallowest' }),
     SlashCommands.configure({ bridge: wiring.slash }),
     BlockKeymap,
     Pagination.configure(wiring.pagination),
