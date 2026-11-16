@@ -46,7 +46,7 @@ disagree, **the master specification governs**. The short brief informs the firs
 | # | Question | Decision |
 | --- | --- | --- |
 | 1 | Which brief governs? | The master specification. So: Dexie (not localforage), folders/notebooks/pages (not a flat note list), the atelier palette and Lora (not cream and monospace). |
-| 2 | Drawing library | Not fixed in advance. `drawfn` (0.0.3 at kickoff) is evaluated at Milestone 4 against tldraw, Excalidraw and a custom engine, behind our own canvas interface. The choice and its limits are then recorded. |
+| 2 | Drawing library | Not fixed in advance. `drawfn` (0.0.3 at kickoff) is evaluated at Milestone 4 against tldraw, Excalidraw and a custom engine, behind our own canvas interface. The choice and its limits are then recorded. **Decided 2026-11-17:** our own engine on perfect-freehand (ARCHITECTURE.md, D13). |
 | 3 | How page content is stored | One Tiptap document per page is the source of truth. Blocks carry stable IDs inside it. A derived index serves search, backlinks and block links. |
 | 4 | Repository and base path | Repository `typewriter`. Base path from `TYPENOTE_BASE`, default `/typewriter/`. |
 | 5 | Routing | Hash routing, so deep links and refresh work on GitHub Pages. |

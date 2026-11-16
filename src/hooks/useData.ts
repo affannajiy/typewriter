@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo } from 'react';
+import { getDrawing } from '@/database/repositories/drawings';
 import { listFolders } from '@/database/repositories/folders';
 import { listNotebooks } from '@/database/repositories/notebooks';
 import { listPages } from '@/database/repositories/pages';
@@ -7,7 +8,7 @@ import { readSettings } from '@/database/repositories/settings';
 import { listTags } from '@/database/repositories/tags';
 import { listTrash } from '@/database/repositories/trash';
 import { type AppSettings, resolveSettings } from '@/features/settings/model';
-import type { Folder, Notebook, Page, Tag } from '@/types/models';
+import type { Drawing, Folder, Id, Notebook, Page, Tag } from '@/types/models';
 
 /**
  * Live views of the workspace. Components read data only through these hooks,
@@ -33,6 +34,11 @@ export function useWorkspace(): Workspace | undefined {
 }
 
 export const useTrash = () => useLiveQuery(listTrash, []);
+
+/** A drawing's stored strokes. Undefined while loading; null when the drawing has never been saved. */
+export function useDrawing(id: Id | null): Drawing | null | undefined {
+  return useLiveQuery(async () => (id ? ((await getDrawing(id)) ?? null) : null), [id]);
+}
 
 export function useSettings(): AppSettings {
   const raw = useLiveQuery(readSettings, []);

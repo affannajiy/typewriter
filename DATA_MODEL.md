@@ -1,7 +1,7 @@
 # Data Model
 
 Source: [`src/types/models.ts`](src/types/models.ts) and [`src/database/db.ts`](src/database/db.ts).
-Database name: `typenote`. Schema version: **1**. Backup format version: **1**.
+Database name: `typenote`. Schema version: **2**. Backup format version: **1**.
 
 ## Common fields
 
@@ -52,7 +52,8 @@ Database name: `typenote`. Schema version: **1**. Backup format version: **1**.
 #### The document (`content`)
 
 Node types: `doc`, `paragraph`, `heading` (`level` 1 to 3), `bulletList`, `orderedList`, `listItem`,
-`taskList`, `taskItem` (`checked`), `blockquote`, `codeBlock`, `horizontalRule`, `hardBreak`, `text`.
+`taskList`, `taskItem` (`checked`), `blockquote`, `codeBlock`, `horizontalRule`, `drawing` (`drawingId`),
+`hardBreak`, `text`.
 Marks: `bold`, `italic`, `underline`, `strike`, `code`. The list is defined once, in
 `schemaExtensions()` in [`src/features/editor/extensions.ts`](src/features/editor/extensions.ts).
 
@@ -64,6 +65,28 @@ the document.
 Pages written before 0.3.0 hold one `paragraph` per line with no IDs. They load as they are. IDs are
 added in the editor and stored with the next real edit, so opening an old page does not change it.
 A document with a node or mark type outside the list above is shown read-only and is never rewritten.
+
+A `drawing` block holds only `drawingId`, the ID of a row in `drawings`. It adds no text to
+`plainText`. Two blocks never share a drawing: a duplicated or pasted block gets a new ID and a copy
+of the strokes.
+
+### `drawings` — index: `id, pageId` (schema version 2)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `id`, `createdAt`, `updatedAt`, `rev` | | As above. No `deletedAt`: a drawing follows its page |
+| `pageId` | id | The page whose document holds the block. Permanently deleting the page deletes its drawings |
+| `width` | number | Canvas width in canvas units. Always 1000 today |
+| `height` | number, 200–8000 | Grows with "Add space below" |
+| `strokes` | Stroke[] | In drawing order. Highlighters are painted under pen strokes |
+
+A **Stroke** is `{ id, tool, colour, size, pen, points }`: `tool` is `pen` or `highlighter`;
+`colour` is an ink name (`ink`, `red`, `blue`, `green`, `yellow`), shown through the theme's
+`--tn-ink-*` token; `size` is the base width in canvas units; `pen` is true when a stylus reported
+real pressure; `points` is a flat list of `x, y, pressure` triples (pressure 0 to 1).
+
+A row is created by the drawing's first save, so an empty drawing block leaves no row. Deleting a
+drawing block from the page does not delete the row, so undo can bring it back.
 
 ### `tags` — index: `id`
 
@@ -87,6 +110,7 @@ folder ─┬─< folder          (parentId)
         ├─< notebook        (folderId)
         └─< page            (folderId)
 notebook ─< page            (notebookId)
+page ─< drawing             (pageId; the page's document names it by drawingId)
 tag >─< notebook, page      (tagIds)
 ```
 
@@ -107,11 +131,13 @@ parent is gone or trashed, the root returns to the top level and the user is tol
   "formatVersion": 1,
   "schemaVersion": 1,
   "exportedAt": "2026-11-16T11:00:00.000Z",
-  "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [] }
+  "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [], "drawings": [] }
 }
 ```
 
-Includes trashed items. Limit: 200 MB. A file with a higher `formatVersion` or `schemaVersion` than
+Includes trashed items. `drawings` is missing from files made before schema version 2; it is read
+as empty. Each stroke is checked: known tool and ink, numbers only, whole triples, at most 50,000
+points per stroke and 20,000 strokes per drawing. Limit: 200 MB. A file with a higher `formatVersion` or `schemaVersion` than
 the app knows is refused with a message to update.
 
 | Restore mode | Existing ID | New ID | Settings |
@@ -122,11 +148,16 @@ the app knows is refused with a message to update.
 
 ## Migrations
 
+| Version | Released in | Change | Upgrade step |
+| --- | --- | --- | --- |
+| 1 | first release | First schema | — |
+| 2 | 0.4.0 | New table `drawings: 'id, pageId'` | Nothing to convert: no existing row changes. Tested by opening a version 1 database (`drawings.test.ts`) |
+
 Never edit a released `this.version(n)` block. Add `this.version(n + 1).stores({...}).upgrade(tx => ...)`,
 bump `SCHEMA_VERSION`, add a migration test with data in the old shape, and extend
 `parseBackup()` to upgrade older backup files.
 
 ## Planned entities
 
-Attachment, Drawing, PDF Annotation, Audio Recording, Deck, Flashcard, Review Log, Link,
+Attachment, PDF Annotation, Audio Recording, Deck, Flashcard, Review Log, Link,
 Page Snapshot. Each arrives with its milestone, as a new schema version.

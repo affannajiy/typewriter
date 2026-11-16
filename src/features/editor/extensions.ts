@@ -3,6 +3,7 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
 import StarterKit from '@tiptap/starter-kit';
 import { Suggestion, type SuggestionProps } from '@tiptap/suggestion';
+import { DrawingNode, type DrawingNodeOptions } from '@/features/drawing/drawingNode';
 import { t } from '@/i18n/en';
 import type { DocNode } from '@/types/models';
 import { BlockId } from './blockIds';
@@ -81,12 +82,13 @@ const BlockKeymap = Extension.create({
 export const BLOCK_SHORTCUTS = { moveUp: 'Alt+Shift+↑', moveDown: 'Alt+Shift+↓', duplicate: 'Mod+Shift+D' };
 
 /** The document schema: the same list everywhere a document is read or checked. */
-export function schemaExtensions(): AnyExtension[] {
+export function schemaExtensions(drawing: Partial<DrawingNodeOptions> = {}): AnyExtension[] {
   return [
     // Links need their own interface (open, edit, remove). Until it exists, pasted addresses stay plain text.
     StarterKit.configure({ link: false, heading: { levels: [1, 2, 3] } }),
     TaskList,
     TaskItem.configure({ nested: true, a11y: { checkboxLabel: (_node, checked) => (checked ? t.editor.taskDone : t.editor.taskNotDone) } }),
+    DrawingNode.configure(drawing),
     BlockId,
   ];
 }
@@ -113,11 +115,12 @@ export function isReadableDoc(doc: DocNode): boolean {
 export interface EditorWiring {
   slash: SlashBridge;
   pagination: PaginationOptions;
+  drawing: Partial<DrawingNodeOptions>;
 }
 
 export function editorExtensions(wiring: EditorWiring): AnyExtension[] {
   return [
-    ...schemaExtensions(),
+    ...schemaExtensions(wiring.drawing),
     Placeholder.configure({ placeholder: t.page.bodyPlaceholder }),
     SlashCommands.configure({ bridge: wiring.slash }),
     BlockKeymap,

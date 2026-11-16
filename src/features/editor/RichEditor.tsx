@@ -1,9 +1,11 @@
 import { EditorContent, useEditor } from '@tiptap/react';
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { copyDrawing } from '@/database/repositories/drawings';
+import { DrawingBlock } from '@/features/drawing/DrawingBlock';
 import type { Typewriter } from '@/features/pages/useTypewriter';
 import { t } from '@/i18n/en';
 import { measureCaret } from '@/services/carriage';
-import type { DocNode, PageLayout } from '@/types/models';
+import type { DocNode, Id, PageLayout } from '@/types/models';
 import { SlashMenu } from './SlashMenu';
 import { Toolbar } from './Toolbar';
 import { setActiveEditor } from './activeEditor';
@@ -40,10 +42,14 @@ interface RichEditorProps {
   onChange: (doc: DocNode) => void;
   /** Number of sheets in the paginated layout. Always 1 in the continuous layout. */
   onPageCount?: (pages: number) => void;
+  /** The page being edited. Drawings belong to it. */
+  pageId?: Id;
+  /** Opens a drawing full screen. */
+  onOpenDrawing?: (drawingId: Id) => void;
 }
 
 /** The writing surface: toolbar, rich text, slash menu, and sheets in the paginated layout. */
-export function RichEditor({ initial, editable, layout, pageSize, pageMargin, typewriter, onChange, onPageCount }: RichEditorProps) {
+export function RichEditor({ initial, editable, layout, pageSize, pageMargin, typewriter, onChange, onPageCount, pageId, onOpenDrawing }: RichEditorProps) {
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [pages, setPages] = useState(1);
   const [available, setAvailable] = useState(0);
@@ -51,7 +57,7 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
   const slashKeys = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const geometry = useRef<PageGeometry | null>(null);
   const pending = useRef<PendingInput | null>(null);
-  const latest = useLatest({ typewriter, onChange });
+  const latest = useLatest({ typewriter, onChange, onOpenDrawing });
 
   /** Remember an edit until the editor reports the change it caused. */
   const expect = (input: PendingInput) => {
@@ -78,6 +84,14 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
         },
       },
       pagination: { getGeometry: () => geometry.current, onPages: setPages },
+      drawing: {
+        pageId: pageId ?? null,
+        view: DrawingBlock,
+        onOpen: (drawingId) => latest.current.onOpenDrawing?.(drawingId),
+        onCopy: (fromId, toId) => {
+          if (pageId) void copyDrawing(fromId, toId, pageId).catch((error: unknown) => console.error(error));
+        },
+      },
     }),
     content: withBlockIds(initial),
     editable,

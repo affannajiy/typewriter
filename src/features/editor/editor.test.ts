@@ -350,3 +350,62 @@ describe('paginated layout', () => {
     expect(geometryFor(small)).toEqual({ contentHeight: 562 - 96, stride: 562 + PAGE_GAP });
   });
 });
+
+describe('drawing blocks', () => {
+  const drawing = (drawingId: string, id?: string): DocNode => ({ type: 'drawing', attrs: { drawingId, ...(id ? { id } : {}) } });
+  const drawingIds = (editor: Editor) => editor.state.doc.content.content.filter((node) => node.type.name === 'drawing').map((node) => node.attrs.drawingId as string);
+
+  it('are part of the schema, carry a block ID and add no text', () => {
+    const stored = doc(p('Before'), drawing('d1', 'b1'), p('After'));
+    expect(isReadableDoc(stored)).toBe(true);
+    expect(docToPlainText(stored)).toBe('Before\nAfter');
+    const editor = makeEditor(stored);
+    expect(drawingIds(editor)).toEqual(['d1']);
+    expect(ids(editor)).toContain('b1');
+  });
+
+  it('a duplicated drawing gets its own drawing ID and asks for a copy of the strokes', async () => {
+    const copies: [string, string][] = [];
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: schemaExtensions({ onCopy: (from, to) => copies.push([from, to]) }),
+      content: doc(drawing('d1', 'b1'), p('After')),
+    });
+    editors.push(editor);
+    editor.commands.setNodeSelection(0);
+    editor.view.dispatch(duplicateBlockTr(editor.state)!);
+    const [original, copy] = drawingIds(editor);
+    expect(original).toBe('d1');
+    expect(copy).not.toBe('d1');
+    await Promise.resolve();
+    expect(copies).toEqual([['d1', copy]]);
+    // Undo removes the copy again; the original is untouched.
+    editor.commands.undo();
+    expect(drawingIds(editor)).toEqual(['d1']);
+  });
+
+  it('the insert command adds an empty drawing and opens it; the slash menu offers it', async () => {
+    const opened: string[] = [];
+    const editor = new Editor({ element: document.createElement('div'), extensions: schemaExtensions({ onOpen: (id) => opened.push(id) }), content: doc(p('')) });
+    editors.push(editor);
+    command('drawing').turnInto!(editor);
+    const [id] = drawingIds(editor);
+    expect(id).toEqual(expect.any(String));
+    await Promise.resolve();
+    expect(opened).toEqual([id]);
+    expect(filterCommands(BLOCK_COMMANDS, 'sketch').map((c) => c.id)).toEqual(['drawing']);
+    // Only asking whether it could run must not open anything.
+    expect(editor.can().insertDrawing()).toBe(true);
+    await Promise.resolve();
+    expect(opened).toHaveLength(1);
+  });
+
+  it('Enter on a selected drawing opens it', () => {
+    const opened: string[] = [];
+    const editor = new Editor({ element: document.createElement('div'), extensions: schemaExtensions({ onOpen: (id) => opened.push(id) }), content: doc(drawing('d1'), p('After')) });
+    editors.push(editor);
+    editor.commands.setNodeSelection(0);
+    editor.view.someProp('handleKeyDown', (handler) => handler(editor.view, new KeyboardEvent('keydown', { key: 'Enter' })));
+    expect(opened).toEqual(['d1']);
+  });
+});

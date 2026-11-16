@@ -2,8 +2,8 @@
 
 Your personal digital writing atelier: a private, local-first notebook that runs in the browser.
 
-**Status:** Milestones 1 to 3 of 8 are complete (foundation, database and organisation, writing editor).
-Typewriter sounds from Milestone 5 are also in. Drawing, PDF, audio and study features are not built yet.
+**Status:** Milestones 1 to 4 of 8 are complete (foundation, database and organisation, writing editor,
+drawing). Typewriter sounds from Milestone 5 are also in. PDF, audio and study features are not built yet.
 See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for the exact state of every feature.
 
 ## What works today
@@ -13,6 +13,7 @@ See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for the exact state of ever
 - A rich-text editor with autosave: headings, bold, italic, underline, lists, checklists, quotes, code and dividers. "Saved" appears only after the database confirms the write.
 - Type `/` for a menu of block types. Move, duplicate, delete or convert a block from the block menu.
 - Search and commands with Ctrl/Cmd + K: find a page by its name or its text, jump to a screen, or format the open page.
+- Drawings in pages: type `/draw`. Pen (pressure-sensitive with a stylus) and highlighter in five inks, an eraser that cuts lines, a lasso to move, resize or delete, undo, and PNG download.
 - Two layouts per page: continuous, or sheets of paper (A4, Letter or A5, with three margin widths).
 - Typewriter sounds while you write, modelled on a manual desk machine: key strikes, space bar, backspace, shift, the carriage return with its bell on Enter and when a line wraps, and paper being fed in when a page opens. Off by default; turn them on with the speaker button under the page, or in **Settings → Writing sounds**, where the volume and the bell are set.
 - Trash: deleting moves an item and its contents to the Trash, with Undo. Nothing is purged automatically.

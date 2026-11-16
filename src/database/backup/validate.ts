@@ -1,7 +1,7 @@
 import { SCHEMA_VERSION } from '@/database/db';
 import { MAX_NAME_LENGTH } from '@/database/repositories/common';
 import { SETTING_KEYS, isValidSetting } from '@/features/settings/model';
-import type { DocNode, Folder, Notebook, Page, SettingRecord, Tag } from '@/types/models';
+import { DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag } from '@/types/models';
 import { isHexColour } from '@/utils/colour';
 
 /**
@@ -21,6 +21,8 @@ export interface BackupData {
   pages: Page[];
   tags: Tag[];
   settings: SettingRecord[];
+  /** Missing from files written before schema version 2; read as empty. */
+  drawings: Drawing[];
 }
 
 export interface BackupFile {
@@ -195,6 +197,46 @@ function page(v: unknown, path: string): Page {
   };
 }
 
+const MAX_STROKES = 20_000;
+const MAX_POINT_VALUES = 3 * 50_000;
+
+function oneOf<T extends string>(v: unknown, allowed: readonly T[], path: string): T {
+  return allowed.find((a) => a === v) ?? fail(path);
+}
+
+function stroke(v: unknown, path: string): Stroke {
+  const r = obj(v, path);
+  const points = list(r.points, `${path}.points`);
+  if (points.length > MAX_POINT_VALUES || points.length % 3 !== 0) fail(`${path}.points`);
+  const size = num(r.size, `${path}.size`);
+  if (size <= 0 || size > 200) fail(`${path}.size`);
+  return {
+    id: id(r.id, `${path}.id`),
+    tool: oneOf(r.tool, DRAW_TOOLS, `${path}.tool`),
+    colour: oneOf(r.colour, INK_COLOURS, `${path}.colour`),
+    size,
+    pen: bool(r.pen, `${path}.pen`),
+    points: points.map((p, i) => num(p, `${path}.points[${i}]`)),
+  };
+}
+
+function drawing(v: unknown, path: string): Drawing {
+  const r = obj(v, path);
+  const strokes = list(r.strokes, `${path}.strokes`);
+  if (strokes.length > MAX_STROKES) fail(`${path}.strokes`);
+  const width = num(r.width, `${path}.width`);
+  const height = num(r.height, `${path}.height`);
+  if (width <= 0 || width > 10_000) fail(`${path}.width`);
+  if (height <= 0 || height > 10_000) fail(`${path}.height`);
+  return {
+    ...versioned(r, path),
+    pageId: id(r.pageId, `${path}.pageId`),
+    width,
+    height,
+    strokes: strokes.map((s, i) => stroke(s, `${path}.strokes[${i}]`)),
+  };
+}
+
 function tag(v: unknown, path: string): Tag {
   const r = obj(v, path);
   return { ...versioned(r, path), name: str(r.name, `${path}.name`, 40), colour: colour(r.colour, `${path}.colour`) };
@@ -249,6 +291,7 @@ export function parseBackup(text: string): BackupFile {
       pages: unique(each('pages', page), 'pages'),
       tags: unique(each('tags', tag), 'tags'),
       settings: settings(d.settings ?? [], 'settings'),
+      drawings: d.drawings === undefined ? [] : unique(each('drawings', drawing), 'drawings'),
     },
   };
 }

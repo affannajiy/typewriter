@@ -1,12 +1,12 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Folder, Notebook, Page, SafetySnapshot, SettingRecord, Tag } from '@/types/models';
+import type { Drawing, Folder, Notebook, Page, SafetySnapshot, SettingRecord, Tag } from '@/types/models';
 
 /**
  * Current database schema version. Bump it together with a new
  * `this.version(n)` block. Never edit a released version block: add a new
  * one with an `.upgrade()` step so existing data is migrated, not lost.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export class TypeNoteDB extends Dexie {
   folders!: EntityTable<Folder, 'id'>;
@@ -15,10 +15,12 @@ export class TypeNoteDB extends Dexie {
   tags!: EntityTable<Tag, 'id'>;
   settings!: EntityTable<SettingRecord, 'key'>;
   snapshots!: EntityTable<SafetySnapshot, 'id'>;
+  drawings!: EntityTable<Drawing, 'id'>;
 
   constructor(name = 'typenote') {
     super(name);
     // Only indexed fields are listed. `*` marks a multi-entry (array) index.
+    // Released. Do not edit.
     this.version(1).stores({
       folders: 'id, parentId, trashBatchId',
       notebooks: 'id, folderId, *tagIds, trashBatchId',
@@ -27,6 +29,14 @@ export class TypeNoteDB extends Dexie {
       settings: 'key',
       snapshots: 'id, createdAt',
     });
+    // 0.4.0: drawings. A new table only; no existing row changes shape.
+    this.version(2)
+      .stores({ drawings: 'id, pageId' })
+      .upgrade(async (tx) => {
+        // Nothing to convert: pages written before 0.4.0 hold no drawing blocks.
+        // Counted so the step fails loudly if the new table was not created.
+        await tx.table('drawings').count();
+      });
   }
 }
 
@@ -34,4 +44,4 @@ export class TypeNoteDB extends Dexie {
 export const db = new TypeNoteDB();
 
 /** Tables that hold user content, in the order used by backup and restore. */
-export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings] as const;
+export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings] as const;

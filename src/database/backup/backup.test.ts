@@ -6,6 +6,7 @@ import { createPage, getPage, listPages, renamePage, setPageTags } from '@/datab
 import { readSettings, writeSetting } from '@/database/repositories/settings';
 import { createTag } from '@/database/repositories/tags';
 import { trashItem } from '@/database/repositories/trash';
+import { getDrawing, saveDrawing } from '@/database/repositories/drawings';
 import { BackupError, analyseBackup, createBackup, latestSnapshot, parseBackup, restoreBackup, restoreSnapshot, serialiseBackup } from './backup';
 
 async function reset() {
@@ -176,5 +177,51 @@ describe('backup validation', () => {
     expect(file.data.pages[0]).not.toHaveProperty('onload');
     expect(file.data.settings.map((s) => s.key)).toEqual(['theme']);
     expect(file.data.settings[0]?.value).toBe('midnight');
+  });
+});
+
+describe('drawings in a backup', () => {
+  const stroke = { id: 's1', tool: 'pen', colour: 'red', size: 6, pen: true, points: [1, 2, 0.5, 3, 4, 0.6] } as const;
+
+  it('are saved and restored with their page', async () => {
+    const page = await createPage({ title: 'Sketch' });
+    await saveDrawing('d1', page.id, { height: 900, strokes: [{ ...stroke, points: [...stroke.points] }] });
+    const text = serialiseBackup(await createBackup());
+    await reset();
+
+    const file = parseBackup(text);
+    expect(file.schemaVersion).toBe(2);
+    expect(file.data.drawings).toHaveLength(1);
+    await restoreBackup(file, 'merge-skip');
+    expect(await getDrawing('d1')).toMatchObject({ pageId: page.id, height: 900, strokes: [stroke] });
+  });
+
+  it('a backup made before drawings existed still restores', async () => {
+    await seed();
+    const raw = JSON.parse(serialiseBackup(await createBackup())) as { schemaVersion: number; data: Record<string, unknown> };
+    raw.schemaVersion = 1;
+    delete raw.data.drawings;
+    const file = parseBackup(JSON.stringify(raw));
+    expect(file.data.drawings).toEqual([]);
+    await reset();
+    await expect(restoreBackup(file, 'replace')).resolves.toMatchObject({ added: 5 });
+  });
+
+  it('a damaged stroke rejects the file and says where', async () => {
+    const page = await createPage({ title: 'Sketch' });
+    await saveDrawing('d1', page.id, { height: 600, strokes: [{ ...stroke, points: [...stroke.points] }] });
+    const raw = JSON.parse(serialiseBackup(await createBackup())) as { data: { drawings: { strokes: Record<string, unknown>[] }[] } };
+    const original = JSON.stringify(raw);
+
+    raw.data.drawings[0]!.strokes[0]!.colour = 'url(x)';
+    expect(() => parseBackup(JSON.stringify(raw))).toThrowError(/drawings\[0\]\.strokes\[0\]\.colour/);
+
+    const uneven = JSON.parse(original) as typeof raw;
+    uneven.data.drawings[0]!.strokes[0]!.points = [1, 2];
+    expect(() => parseBackup(JSON.stringify(uneven))).toThrowError(/strokes\[0\]\.points/);
+
+    const notNumbers = JSON.parse(original) as typeof raw;
+    notNumbers.data.drawings[0]!.strokes[0]!.points = [1, 2, '3'];
+    expect(() => parseBackup(JSON.stringify(notNumbers))).toThrowError(/points\[2\]/);
   });
 });

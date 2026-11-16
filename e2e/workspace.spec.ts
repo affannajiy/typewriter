@@ -439,3 +439,55 @@ test('the sheets layout breaks the text into pages, and the paper settings apply
   await expect.poll(cut).toBe(0);
   expect(await noSidewaysScroll(page)).toBeLessThanOrEqual(0);
 });
+
+test('a drawing is made in a page, saved, reopened and downloaded as an image', async ({ page }) => {
+  await page.goto('./');
+  await newPageInMain(page);
+  await page.getByLabel('Page title').fill('Diagrams');
+  await writeBody(page, 'Above the drawing.', '/draw');
+  await page.keyboard.press('Enter');
+
+  // The new drawing opens full screen at once, empty.
+  const editor = page.getByRole('dialog', { name: 'Drawing' });
+  await expect(editor).toBeVisible();
+  const canvas = editor.getByRole('img', { name: /Drawing canvas/ });
+  await expect(canvas).toHaveAccessibleName('Drawing canvas, 0 strokes');
+
+  const box = (await canvas.boundingBox())!;
+  const stroke = async (from: [number, number], to: [number, number]) => {
+    await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(box.x + box.width * (from[0] + ((to[0] - from[0]) * i) / 10), box.y + box.height * (from[1] + ((to[1] - from[1]) * i) / 10));
+    }
+    await page.mouse.up();
+  };
+  await stroke([0.1, 0.2], [0.6, 0.5]);
+  await editor.getByRole('radio', { name: 'Red' }).check({ force: true });
+  await stroke([0.2, 0.7], [0.8, 0.7]);
+  await expect(canvas).toHaveAccessibleName('Drawing canvas, 2 strokes');
+
+  // The eraser cuts the red line in two.
+  await editor.getByRole('radio', { name: 'Eraser' }).check({ force: true });
+  await stroke([0.5, 0.6], [0.5, 0.8]);
+  await expect(canvas).toHaveAccessibleName('Drawing canvas, 3 strokes');
+  await expect(editor.getByText(/Saved on this device at/)).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await editor.getByRole('button', { name: 'Download as PNG' }).click();
+  expect((await download).suggestedFilename()).toMatch(/^typenote-drawing-\d{4}-\d{2}-\d{2}-\d{4}\.png$/);
+
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(editor).toBeHidden();
+  await expect(page.getByRole('img', { name: 'Drawing with 3 strokes' })).toBeVisible();
+  // A drawing adds no words to the page.
+  await expect(page.getByText('3 words')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('img', { name: 'Drawing with 3 strokes' })).toBeVisible();
+  // Opening with a click must not leave a dot where the click was.
+  await page.getByRole('button', { name: 'Open drawing' }).click();
+  await expect(page.getByRole('dialog', { name: 'Drawing' }).getByRole('img', { name: /Drawing canvas/ })).toHaveAccessibleName('Drawing canvas, 3 strokes');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Drawing' })).toBeHidden();
+});

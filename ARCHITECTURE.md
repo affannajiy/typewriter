@@ -16,13 +16,15 @@ Versions are the ones installed at kickoff (2026-11-16); `package-lock.json` pin
 | Routing | React Router 8, hash mode | MIT |
 | Database | Dexie 4 on IndexedDB, `dexie-react-hooks` | Apache-2.0 |
 | Editor | Tiptap 3 (ProseMirror): core, React binding, starter kit, list, extensions, suggestion | MIT |
+| Drawing | perfect-freehand 1.2 (stroke outlines only), our own engine around it (D13) | MIT |
 | Icons | Lucide | ISC |
 | Fonts | Inter, Lora, Cormorant Garamond, JetBrains Mono via Fontsource, bundled | OFL-1.1 |
 | Tests | Vitest 5, React Testing Library, fake-indexeddb, Playwright | MIT / Apache-2.0 |
 | Lint | ESLint 9 with jsx-a11y and react-hooks, parsed by `@babel/eslint-parser` | MIT |
 
-Runtime dependencies: 18 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
-project and one version). `npm audit` reports 0 vulnerabilities (2026-11-16).
+Runtime dependencies: 19 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
+project and one version; perfect-freehand has no dependencies of its own). `npm audit` reports 0
+vulnerabilities (2026-11-17).
 
 ## Layers
 
@@ -35,6 +37,7 @@ src/
   features/       One folder per screen or concern
     dashboard/  library/  pages/  tags/  trash/  settings/
     editor/       Rich text: schema, block IDs, commands, toolbar, slash menu, pagination
+    drawing/      Drawing engine (geometry), the drawing block, the full-screen editor, PNG export
     search/       Global search and the command palette
     organisation/ Shared item rows, menus, dialogs, actions
   hooks/          useData.ts: live queries over repositories
@@ -183,6 +186,41 @@ Where the breaks fall is decided by a pure function (`paginate`), tested without
   each page is cached per page object. Budget: under 50 ms at 5,000 pages. Not measured yet.
 - *Planned:* the derived index of D1, when block links and backlinks need it (Milestone 7).
 
+### D13. Drawing: our own engine on perfect-freehand
+
+PRD decision 2 left the drawing library open. Evaluated on 2026-11-17 (versions from npm):
+
+| Candidate | Licence | Size (unpacked) | Verdict |
+| --- | --- | --- | --- |
+| `drawfn` 0.0.3 | MIT | 650 kB | Pre-release, a few weeks old, one organisation. Too early to hold user drawings. |
+| tldraw 5.6 | tldraw licence | 15.6 MB | Production use needs a licence key; without one it shows a watermark. Its own document store would sit beside ours. Rejected on licence. |
+| Excalidraw 0.18 | MIT | 46.8 MB | Built for diagrams in a hand-drawn style, with its own interface and file format. No real pen pressure. Far too large for one block type. |
+| perfect-freehand 1.2 + own engine | MIT | 112 kB, no dependencies | Chosen. Pressure-sensitive outlines from points; everything else is ours and small. |
+
+How it is built (`features/drawing/`):
+
+- **Strokes are data.** A stroke is a flat list of `x, y, pressure` points with a tool, an ink name
+  and a width (DATA_MODEL.md). perfect-freehand only turns points into an outline when drawing.
+  So strokes can be erased in part, selected, moved and scaled, and nothing is lost to pixels.
+- **Pure geometry** (`geometry.ts`): outline, partial erase (a cut stroke becomes two), lasso hit
+  test, bounds, move and scale, undo history. Unit-tested without a browser.
+- **The block holds an ID, the table holds the strokes.** The page's document has a `drawing` node
+  with a `drawingId`; the strokes are a row in `drawings`. Typing in the page never rewrites a
+  drawing, and a big drawing does not slow the page's autosave. The drawing saves through the same
+  autosaver as the page, so "Saved" means the same thing.
+- **Copies.** A duplicated or pasted block gets a new drawing ID and a copy of the strokes (a plugin
+  in `drawingNode.ts`, and a check in the block for blocks pasted from another page). Drawing in one
+  copy never changes the other.
+- **Lifetime.** Deleting the block keeps the row, so the editor's undo can bring the block back with
+  its strokes. Rows go when their page is deleted permanently.
+- **Input.** Pointer events with coalesced samples; real pressure from a pen, simulated from speed
+  for mouse and touch. Once a pen is used, touch scrolls instead of drawing (palm rejection).
+- **Inks are theme tokens** (`--tn-ink-*`), stored by name, so a drawing reads on every paper. The
+  PNG export paints with the current theme's values.
+- *Limits:* drawing happens in a full-screen editor; the page shows a preview. No shapes, text boxes
+  or images on the canvas. Drawing itself needs a pointer: keyboard users can open, undo, redo,
+  delete a selection and download, but not draw.
+
 ## Security and privacy posture
 
 - No network requests after load. No analytics, no third-party scripts, fonts bundled.
@@ -196,8 +234,9 @@ Where the breaks fall is decided by a pure function (`paginate`), tested without
 | Item | Note |
 | --- | --- |
 | ESLint has no type-aware rules | It parses TypeScript with Babel, because typescript-eslint needs the TypeScript 5/6 compiler API and the project uses TypeScript 7. Move to typescript-eslint when it supports 7. |
+| A drawing whose block was deleted stays until its page is deleted permanently | Needed for undo (D13). Page purge is the only cleanup. |
 | No service worker | The app needs the network to load. PWA and offline shell are Milestone 8. |
-| Initial JS is 483 kB (152 kB gzip); the editor is a second file of 452 kB (145 kB gzip), loaded with the first page | Only the page screen is split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
+| Initial JS is 487 kB (153 kB gzip); the editor and drawing are a second file of 485 kB (157 kB gzip), loaded with the first page | Only the page screen is split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
 | Sidebar is not resizable | It collapses to icons. Resizable panels are deferred. |
 | Tooltips are native `title` | No custom tooltip component yet. Icon-only buttons also carry `aria-label`. |
 | Backup is a single JSON string in memory | Fine for text. Binary attachments (Milestone 6) need a streamed or zipped format. |

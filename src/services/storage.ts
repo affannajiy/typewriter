@@ -47,9 +47,9 @@ export function formatBytes(bytes: number): string {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)} ${units[unit]}`;
 }
 
-/** Hand a text file to the browser's download flow. */
-export function downloadTextFile(name: string, text: string, type = 'application/json'): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+/** Hand a file to the browser's download flow. Nothing leaves the device. */
+export function downloadBlob(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = name;
@@ -58,4 +58,9 @@ export function downloadTextFile(name: string, text: string, type = 'application
   link.remove();
   // Revoke after the click has been handled, so the download can start.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Hand a text file to the browser's download flow. */
+export function downloadTextFile(name: string, text: string, type = 'application/json'): void {
+  downloadBlob(name, new Blob([text], { type }));
 }

@@ -15,6 +15,8 @@ export function docToPlainText(doc: DocNode): string {
     return (node.content ?? []).map(visit).join('');
   };
   const walk = (node: DocNode) => {
+    // A drawing holds no text: it is not a line, not even an empty one.
+    if (node.type === 'drawing') return;
     const children = node.content ?? [];
     const isLeafBlock = children.length === 0 || children.every((c) => typeof c.text === 'string' || !c.content);
     if (node.type !== 'doc' && isLeafBlock) lines.push(visit(node));

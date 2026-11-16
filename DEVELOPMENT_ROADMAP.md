@@ -1,6 +1,6 @@
 # Development Roadmap and Implementation Checklist
 
-**Last updated:** 2026-11-16 · **Version:** 0.3.0
+**Last updated:** 2026-11-17 · **Version:** 0.4.0
 
 Status words: **Not started**, **In progress**, **Implemented** (works, not yet covered by an
 automated test), **Tested** (works and has automated tests), **Blocked**.
@@ -10,8 +10,8 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | 1 Foundation | Done, with the gaps listed below |
 | 2 Database and organisation | Done, with the gaps listed below |
 | 3 Writing editor | Done, with the gaps listed below |
-| 4 Drawing | Not started (next) |
-| 5 Writing atmosphere | In progress: typewriter sounds done early, at the owner's request |
+| 4 Drawing | Done, with the gaps listed below |
+| 5 Writing atmosphere | In progress (next): typewriter sounds done early, at the owner's request |
 | 6 PDF and audio | Not started |
 | 7 Study features | Not started |
 | 8 Polish and deployment | Not started (the deploy workflow exists but has never run) |
@@ -41,7 +41,7 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Item | Status | Note |
 | --- | --- | --- |
 | Dexie schema v1, repository layer | Tested | |
-| Migrations | Implemented | Mechanism and rules documented. No migration exists yet, so none is tested |
+| Migrations | Tested | Version 2 (drawings) is the first; opening a version 1 database is tested |
 | Folders: create, rename, nest, move, reorder | Tested | Cycle prevention tested |
 | Notebooks: create, edit details, cover colour, move, reorder, favourite, tags | Tested | |
 | Pages: create anywhere, move, reorder, favourite, pin, tags | Tested | |
@@ -102,10 +102,36 @@ end-to-end test "a workspace survives closing and reopening the app".
 
 ## Milestone 4 — Drawing
 
-Evaluate `drawfn`, tldraw, Excalidraw and a custom perfect-freehand engine against: stylus and
-pressure, editable strokes, partial erase, lasso, object transforms, performance, import/export,
-React 19 support, licence, maintenance. Wrap the winner behind our own interface. Then: inline
-drawing block, full-screen canvas, persistence as editable data, PNG export.
+| Item | Status | Note |
+| --- | --- | --- |
+| Library evaluation: `drawfn`, tldraw, Excalidraw, custom on perfect-freehand | Done | Custom engine on perfect-freehand. Reasons and table in ARCHITECTURE.md, D13 |
+| Schema v2: `drawings` table, with migration test | Tested | A version 1 database opens with its data intact |
+| Strokes stored as editable data (points with pressure, tool, ink, width) | Tested | Not pixels. Saved through the same honest autosaver as pages |
+| Drawing block in the page: slash menu, toolbar, command palette; preview; Enter or button opens it | Tested | Unit and end-to-end. The block adds no words to the page |
+| Full-screen drawing editor | Tested | Native `<dialog>`. Escape drops a selection, then closes after the last write |
+| Pen and highlighter, five inks, three widths | Tested | Inks are theme tokens with a contrast test; the highlighter is translucent and sits under the pen |
+| Stylus pressure; palm rejection | Tested (palm rejection) / Implemented (pressure) | Pressure from the pen, simulated from speed otherwise. After a pen is used, touch no longer draws (component test with simulated pen events). Not tried with a real stylus |
+| Partial erase | Tested | A stroke cut in the middle becomes two |
+| Lasso select, move, resize, delete | Tested (select, delete, the move and scale maths) / Implemented (dragging to move and resize) | Dragging was checked by hand in Chromium, not by an automated test |
+| Undo and redo in the drawing | Tested | Buttons and Ctrl/Cmd + Z, Ctrl/Cmd + Shift + Z, Ctrl/Cmd + Y |
+| Duplicate or paste a drawing block | Tested (duplicate) / Implemented (paste from another page) | The copy gets its own strokes |
+| Drawing deleted with its page | Tested | Only when the page is deleted permanently. Trash and restore keep it |
+| Backup and restore of drawings | Tested | Old backups without drawings still restore. Strokes validated like any untrusted input |
+| PNG export | Tested | End-to-end download. Twice the canvas size, on the theme's paper colour |
+| "Add space below" | Tested | Canvas grows by 300 units, up to 8,000 |
+
+**Gaps, on purpose or still owed:**
+
+- **Drawing happens full screen**, not on the page itself. The page shows a preview.
+- No shapes, straight lines, text boxes, images or zoom on the canvas. No SVG export or import.
+- **Drawing needs a pointer.** Keyboard users can open a drawing, undo, redo, delete a selection
+  and download it, but cannot draw. The canvas is announced with its number of strokes only.
+- Not tried with a real stylus (Apple Pencil, S Pen, Wacom), or on iOS Safari. Pressure and palm
+  rejection are tested with simulated pen events only.
+- No performance budget measured for a drawing with thousands of strokes. Each stroke's outline is
+  computed once and kept while it does not change.
+- A drawing whose block was deleted stays until its page is deleted permanently (needed for undo).
+- The selection is a box with one resize corner. No rotation.
 
 ## Milestone 5 — Writing atmosphere (started early)
 

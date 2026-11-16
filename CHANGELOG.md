@@ -3,6 +3,52 @@
 Versions follow [Semantic Versioning](https://semver.org/). Before 1.0.0, the public contracts are
 the database schema and the backup file format; both carry their own version numbers.
 
+## 0.4.0 — 2026-11-17
+
+Milestone 4 (Drawing).
+
+### Added
+
+- Drawings in pages. Type `/draw`, or use the toolbar or the command palette, to add a drawing
+  block. It opens full screen; the page shows a preview, and "Open drawing" (or Enter on the
+  selected block) opens it again.
+- Pen and highlighter in five inks (ink, red, blue, green, yellow) and three widths. A pen's
+  pressure changes the line's width; with a mouse or a finger, the speed does.
+- Palm rejection: once a pen is used, a finger scrolls instead of drawing.
+- Eraser that removes only what it touches: a line cut in the middle becomes two.
+- Lasso: select strokes, then move, resize or delete them.
+- Undo and redo in the drawing, with buttons or Ctrl/Cmd + Z and Ctrl/Cmd + Shift + Z.
+- "Add space below" makes the canvas taller.
+- Download a drawing as a PNG image.
+- Drawings are part of backups.
+- Design tokens for drawing inks in every theme, with a contrast check.
+- 48 more unit and component tests and 1 more end-to-end journey (292 unit, 10 journeys).
+
+### Changed
+
+- Database schema version 2: a new `drawings` table. Opening the app upgrades the database; no
+  existing data changes.
+- Backups now hold drawings. Backups made by earlier versions still restore. A backup made by
+  0.4.0 is refused by earlier versions, which ask to be updated.
+- The editor file is 12 kB (gzip) larger, for the drawing engine (perfect-freehand, MIT, no
+  dependencies).
+
+### Security and data safety
+
+- A drawing saves through the same autosaver as a page: "Saved" appears only after the write, and
+  "Done" closes the drawing only after its last write. A failed write keeps the drawing open, with
+  a retry.
+- Strokes in a backup file are validated like everything else: known tool and ink, numbers only,
+  bounded sizes.
+- A duplicated or pasted drawing block gets its own copy of the strokes, so changing or deleting
+  one never changes the other.
+- A drawing is deleted only when its page is deleted permanently.
+
+### Known limits
+
+- Drawing happens full screen, not on the page. No shapes, text or images on the canvas. Drawing
+  needs a pointer. Not yet tried with a real stylus. See DEVELOPMENT_ROADMAP.md, Milestone 4.
+
 ## 0.3.0 — 2026-11-16
 
 Milestone 3 (Writing editor).

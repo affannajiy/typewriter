@@ -1,6 +1,6 @@
 import { SCHEMA_VERSION, db } from '@/database/db';
 import { newId, now } from '@/database/repositories/common';
-import type { Folder, Id, Notebook, Page, SafetySnapshot, Tag } from '@/types/models';
+import type { Drawing, Folder, Id, Notebook, Page, SafetySnapshot, Tag } from '@/types/models';
 import { BACKUP_FORMAT_VERSION, type BackupData, type BackupFile, parseBackup } from './validate';
 
 export { BackupError, parseBackup, type BackupFile } from './validate';
@@ -13,18 +13,19 @@ export { BackupError, parseBackup, type BackupFile } from './validate';
  * snapshot of the old workspace first, so the user can undo it.
  */
 
-const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings] as const;
+const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings] as const;
 const SNAPSHOTS_KEPT = 3;
 
 async function readAll(): Promise<BackupData> {
-  const [folders, notebooks, pages, tags, settings] = await Promise.all([
+  const [folders, notebooks, pages, tags, settings, drawings] = await Promise.all([
     db.folders.toArray(),
     db.notebooks.toArray(),
     db.pages.toArray(),
     db.tags.toArray(),
     db.settings.toArray(),
+    db.drawings.toArray(),
   ]);
-  return { folders, notebooks, pages, tags, settings };
+  return { folders, notebooks, pages, tags, settings, drawings };
 }
 
 /** A full copy of the workspace, including items in the Trash. */
@@ -145,6 +146,7 @@ async function replaceAll(data: BackupData): Promise<void> {
   await db.pages.bulkAdd(data.pages);
   await db.tags.bulkAdd(data.tags);
   await db.settings.bulkAdd(data.settings);
+  await db.drawings.bulkAdd(data.drawings);
 }
 
 export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promise<RestoreReport> {
@@ -183,6 +185,7 @@ export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promis
     await merge<Notebook>(db.notebooks, data.notebooks);
     await merge<Page>(db.pages, data.pages);
     await merge<Tag>(db.tags, data.tags);
+    await merge<Drawing>(db.drawings, data.drawings);
     // Settings on this device win in a merge: only missing keys are added.
     for (const setting of data.settings) {
       if (!(await db.settings.get(setting.key))) await db.settings.put(setting);

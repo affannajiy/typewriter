@@ -25,6 +25,11 @@
   --tn-success: #2a5f3d;
   --tn-focus: #795b43;
   --tn-decor: #b08a50; /* Antique Brass: decoration only, never text */
+  /* Drawing inks: 3:1 or more on the surface. The yellow is a highlighter, drawn translucent. */
+  --tn-ink-red: #b3261e;
+  --tn-ink-blue: #1f5fa8;
+  --tn-ink-green: #2e6b34;
+  --tn-ink-yellow: #f2c230;
 }
 
 [data-theme='dark-academia'] {
@@ -42,6 +47,11 @@
   --tn-success: #a9d6b3;
   --tn-focus: #d9b872;
   --tn-decor: #b08a50;
+  /* Drawing inks: 3:1 or more on the surface. The yellow is a highlighter, drawn translucent. */
+  --tn-ink-red: #f28b82;
+  --tn-ink-blue: #8ab4f8;
+  --tn-ink-green: #81c995;
+  --tn-ink-yellow: #fdd663;
 }
 
 [data-theme='minimalist'] {
@@ -59,6 +69,11 @@
   --tn-success: #2a6341;
   --tn-focus: #4a4a50;
   --tn-decor: #b8b8b2;
+  /* Drawing inks: 3:1 or more on the surface. The yellow is a highlighter, drawn translucent. */
+  --tn-ink-red: #b3261e;
+  --tn-ink-blue: #1f5fa8;
+  --tn-ink-green: #2e6b34;
+  --tn-ink-yellow: #f2c230;
 }
 
 [data-theme='forest'] {
@@ -76,6 +91,11 @@
   --tn-success: #2a5f3d;
   --tn-focus: #3f5a3c;
   --tn-decor: #a7b2a0; /* Sage */
+  /* Drawing inks: 3:1 or more on the surface. The yellow is a highlighter, drawn translucent. */
+  --tn-ink-red: #b3261e;
+  --tn-ink-blue: #1f5fa8;
+  --tn-ink-green: #2e6b34;
+  --tn-ink-yellow: #f2c230;
 }
 
 [data-theme='midnight'] {
@@ -93,6 +113,11 @@
   --tn-success: #a5d6b4;
   --tn-focus: #c3cedd;
   --tn-decor: #6f7f96;
+  /* Drawing inks: 3:1 or more on the surface. The yellow is a highlighter, drawn translucent. */
+  --tn-ink-red: #f28b82;
+  --tn-ink-blue: #8ab4f8;
+  --tn-ink-green: #81c995;
+  --tn-ink-yellow: #fdd663;
 }
 
 [data-theme='rose'] {
@@ -110,6 +135,11 @@
   --tn-success: #2a5f3d;
   --tn-focus: #8a5567;
   --tn-decor: #c9a0a5;
+  /* Drawing inks: 3:1 or more on the surface. The yellow is a highlighter, drawn translucent. */
+  --tn-ink-red: #b3261e;
+  --tn-ink-blue: #1f5fa8;
+  --tn-ink-green: #2e6b34;
+  --tn-ink-yellow: #f2c230;
 }
 
 :root {

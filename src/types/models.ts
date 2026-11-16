@@ -106,3 +106,36 @@ export interface PageLocation {
   notebookId: Id | null;
   folderId: Id | null;
 }
+
+/** Ink colours are names, not values: each theme shows them in a shade that reads on its paper. */
+export const INK_COLOURS = ['ink', 'red', 'blue', 'green', 'yellow'] as const;
+export type InkColour = (typeof INK_COLOURS)[number];
+
+export const DRAW_TOOLS = ['pen', 'highlighter'] as const;
+export type DrawTool = (typeof DRAW_TOOLS)[number];
+
+/** One line drawn without lifting the pen. */
+export interface Stroke {
+  id: Id;
+  tool: DrawTool;
+  colour: InkColour;
+  /** Base width in canvas units. */
+  size: number;
+  /** True when drawn with a stylus that reports real pressure. Otherwise pressure is simulated from speed. */
+  pen: boolean;
+  /** Flat list of x, y, pressure triples, in canvas units. Pressure is 0 to 1. */
+  points: number[];
+}
+
+/**
+ * A drawing in a page. The page's document holds a `drawing` block with this
+ * ID; the strokes live here, so typing in the page never rewrites them.
+ */
+export interface Drawing extends Versioned {
+  /** The page whose document holds the drawing. Permanently deleting the page deletes it. */
+  pageId: Id;
+  /** Size of the canvas in canvas units. The width is fixed; the height grows on request. */
+  width: number;
+  height: number;
+  strokes: Stroke[];
+}

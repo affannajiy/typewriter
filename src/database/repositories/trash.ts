@@ -1,6 +1,7 @@
 import { db } from '@/database/db';
 import type { Folder, Id, ItemKind, ItemRef, Notebook, Page } from '@/types/models';
 import { found, isLive, newId, now } from './common';
+import { deleteDrawingsOfPages } from './drawings';
 import { folderSubtreeIds } from './folders';
 import { patchPages } from './pages';
 
@@ -171,7 +172,9 @@ export async function restoreBatch(batchId: Id): Promise<RestoreResult> {
 
 /** Permanently delete one batch. This cannot be undone. */
 export async function purgeBatch(batchId: Id): Promise<number> {
-  return db.transaction('rw', tables(), async () => {
+  return db.transaction('rw', [...tables(), db.drawings], async () => {
+    // A page's drawings go with it.
+    await deleteDrawingsOfPages(await db.pages.where('trashBatchId').equals(batchId).primaryKeys());
     const counts = await Promise.all([
       db.folders.where('trashBatchId').equals(batchId).delete(),
       db.notebooks.where('trashBatchId').equals(batchId).delete(),
@@ -183,8 +186,9 @@ export async function purgeBatch(batchId: Id): Promise<number> {
 
 /** Permanently delete everything in the Trash. This cannot be undone. */
 export async function emptyTrash(): Promise<number> {
-  return db.transaction('rw', tables(), async () => {
+  return db.transaction('rw', [...tables(), db.drawings], async () => {
     const trashed = (item: { deletedAt: number | null }) => item.deletedAt !== null;
+    await deleteDrawingsOfPages(await db.pages.filter(trashed).primaryKeys());
     const counts = await Promise.all([
       db.folders.filter(trashed).delete(),
       db.notebooks.filter(trashed).delete(),

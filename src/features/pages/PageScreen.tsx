@@ -7,6 +7,7 @@ import { Breadcrumbs, type Crumb, LoadingBlock, Segmented } from '@/components/u
 import { docToPlainText, getPage, markPageOpened, savePageDraft, setPageFlags, setPageLayout, setPageTags } from '@/database/repositories/pages';
 import { writeSetting } from '@/database/repositories/settings';
 import { restoreBatch } from '@/database/repositories/trash';
+import { DrawingEditor } from '@/features/drawing/DrawingEditor';
 import { RichEditor } from '@/features/editor/RichEditor';
 import { isReadableDoc } from '@/features/editor/extensions';
 import { ItemMenu } from '@/features/organisation/ItemMenu';
@@ -69,6 +70,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
   const [draft, setDraft] = useState<Draft>(() => ({ title: page.title, content: page.content }));
   const [status, setStatus] = useState<SaveStatus>({ state: 'idle', savedAt: page.updatedAt, error: null });
   const [sheets, setSheets] = useState(1);
+  const [openDrawing, setOpenDrawing] = useState<string | null>(null);
   const saver = useRef<Autosaver<Draft> | null>(null);
   const latestDraft = useRef(draft);
   const inTrash = page.deletedAt !== null;
@@ -199,11 +201,15 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
           typewriter={typewriter}
           onChange={changeContent}
           onPageCount={setSheets}
+          pageId={page.id}
+          onOpenDrawing={setOpenDrawing}
         />
       ) : (
         // The stored text, exactly as it is. Nothing on this screen can change the page.
         <pre className="flex-1 py-2 font-serif text-lg leading-[1.7] whitespace-pre-wrap text-ink">{page.plainText}</pre>
       )}
+
+      {openDrawing && !locked && <DrawingEditor drawingId={openDrawing} pageId={page.id} onClose={() => setOpenDrawing(null)} />}
 
       <footer className="sticky bottom-16 z-10 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line bg-bg py-2 text-xs text-muted md:bottom-0">
         <SaveIndicator status={status} onRetry={() => void saver.current?.flush()} />

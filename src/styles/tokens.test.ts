@@ -37,6 +37,10 @@ const nonTextPairs: [string, string][] = [
   ['focus', 'surface'],
   ['focus', 'sunken'],
   ['accent', 'bg'],
+  // Drawing inks are graphics (1.4.11). The yellow highlighter is not listed: it marks, it does not draw lines.
+  ['ink-red', 'surface'],
+  ['ink-blue', 'surface'],
+  ['ink-green', 'surface'],
 ];
 
 describe('theme tokens', () => {
