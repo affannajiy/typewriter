@@ -17,7 +17,8 @@ const GROUPS: EditorCommand[][] = [
   ['bold', 'italic', 'underline', 'code'],
   ['heading1', 'heading2', 'heading3'],
   ['bulletList', 'orderedList', 'taskList'],
-  ['blockquote', 'codeBlock', 'horizontalRule', 'drawing'],
+  ['blockquote', 'codeBlock', 'horizontalRule'],
+  ['drawing', 'pdf', 'audio'],
 ].map((group) => group.map(byId));
 
 const BUTTONS = GROUPS.flat();

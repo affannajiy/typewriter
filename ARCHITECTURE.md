@@ -17,14 +17,16 @@ Versions are the ones installed at kickoff (2026-11-16); `package-lock.json` pin
 | Database | Dexie 4 on IndexedDB, `dexie-react-hooks` | Apache-2.0 |
 | Editor | Tiptap 3 (ProseMirror): core, React binding, starter kit, list, extensions, suggestion | MIT |
 | Drawing | perfect-freehand 1.2 (stroke outlines only), our own engine around it (D13) | MIT |
+| PDF | PDF.js (`pdfjs-dist`) 6.5, loaded when a PDF is first opened (D15) | Apache-2.0 |
 | Icons | Lucide | ISC |
 | Fonts | Inter, Lora, Cormorant Garamond, JetBrains Mono via Fontsource, bundled | OFL-1.1 |
 | Tests | Vitest 5, React Testing Library, fake-indexeddb, Playwright | MIT / Apache-2.0 |
 | Lint | ESLint 9 with jsx-a11y and react-hooks, parsed by `@babel/eslint-parser` | MIT |
 
-Runtime dependencies: 19 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
-project and one version; perfect-freehand has no dependencies of its own). `npm audit` reports 0
-vulnerabilities (2026-11-17).
+Runtime dependencies: 20 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
+project and one version; perfect-freehand has no dependencies of its own; pdfjs-dist is Mozilla's).
+pdfjs-dist lists `@napi-rs/canvas` as an optional dependency for Node; npm installs it, the browser
+build never loads it. `npm audit` reports 0 vulnerabilities (2026-11-17).
 
 ## Layers
 
@@ -39,6 +41,7 @@ src/
     editor/       Rich text: schema, block IDs, commands, toolbar, slash menu, pagination
     drawing/      Drawing engine (geometry), the drawing block, the full-screen editor, PNG export
     dashboard/    The desk, and the words-written summary (stats.ts, WritingStats)
+    files/        PDF and recording blocks, the PDF reader, highlight geometry, the Files screen
     search/       Global search and the command palette
     organisation/ Shared item rows, menus, dialogs, actions
   hooks/          useData.ts: live queries over repositories
@@ -46,7 +49,7 @@ src/
     db.ts         Dexie schema and versions
     repositories/ All reads and writes of user data
     backup/       Backup format, validation, restore
-  services/       autosave, storage facts
+  services/       autosave, storage facts, PDF.js wrapper (pdf.ts), recorder
   i18n/           en.ts: every interface string
   styles/         tokens.css (themes), index.css (Tailwind mapping)
   types/          models.ts: the data model
@@ -121,6 +124,13 @@ The production build adds a CSP meta tag: everything `'self'`, no inline scripts
 connections. `style-src` allows `'unsafe-inline'` because user-chosen colours are applied as style
 attributes; those values are validated as hex before they are stored. A meta-tag CSP cannot set
 `frame-ancestors`; that needs a header, which GitHub Pages does not let us set.
+
+Since 0.6.0: `media-src 'self' blob:` (recordings play from object URLs made from stored bytes),
+`worker-src 'self'` (PDF.js's worker is a file of the app), and `'wasm-unsafe-eval'` in
+`script-src`, which lets PDF.js compile its bundled image decoders. It allows WebAssembly only;
+JavaScript `eval` stays forbidden. Fonts are never inlined as `data:` URLs by the build
+(`assetsInlineLimit`), because `font-src` is `'self'`: before 0.6.0 one JetBrains Mono subset was
+inlined and blocked in production, which the new end-to-end check found.
 
 ### D9. Typewriter sounds are synthesised, not recorded
 
@@ -254,6 +264,39 @@ Milestone 5. Everything here is presentation, so it lives in settings and styles
 - **Words written** are counted by the page repository inside the save transaction
   (`writingDays`, DATA_MODEL.md). The dashboard reads them; nothing is sent anywhere.
 
+### D15. PDFs and recordings: files beside pages, PDF.js behind a wrapper
+
+Milestone 6.
+
+- **A file is two rows.** `attachments` holds the details, `attachmentData` the bytes, written
+  together and never changed. Lists (Files, a block) read details only.
+- **Blocks name files; files do not name pages.** Where a file is used is read from the pages'
+  documents (`attachmentIdsIn`). So moving, duplicating or pasting a block needs no bookkeeping, and
+  two blocks may share a file. The cost is a scan of all pages when deleting a file or purging pages.
+- **Deletion is never a side effect of editing.** Removing a block keeps the file (undo works). A
+  file goes only when the user deletes it from Files (refused while any page, even in the Trash,
+  uses it) or when the last page that used it is purged, both behind a confirmation.
+- **PDF.js** is imported only by `services/pdf.ts`, and only on first use, with its worker as a
+  separate file. Its data files (fonts, character maps, colour profiles, image decoders) are copied
+  into `dist/pdfjs/` by a small Vite plugin and served from `node_modules` in development; the
+  scripting sandbox is left out, and XFA forms are off. The reader paints a page only when it is
+  within one and a half screens and releases the canvas when it leaves, so memory stays bounded for
+  long PDFs.
+- **Highlights are geometry plus text.** The text layer is PDF.js's own. A selection's screen
+  rectangles are clipped to the page, merged per line and stored as fractions of the page
+  (`highlights.ts`, pure and unit-tested), so they fit at any zoom. They are drawn under the text
+  layer with `mix-blend-mode: multiply`, in the theme's ink colours. A PDF page itself stays white in
+  every theme (`--tn-pdf-paper`).
+- **Recording** uses MediaRecorder at 64 kbit/s and keeps pieces in memory until stopped; the time
+  shown and stored is measured without pauses. Formats are chosen in order (Opus in WebM or Ogg, AAC
+  in MP4). The player seeks to the end once to learn a WebM recording's length, which browsers do
+  not know until they have read it.
+- **Backups** hold the bytes as base64 (format 2), validated like all input (D7). The 400 MB limit
+  is checked when a backup is made, so a backup that could not be restored is never produced.
+- *Alternatives:* storing files as Blobs (fine in current browsers, but ArrayBuffers are the safest
+  across engines and test tools); a zipped backup (better, needs a dependency; planned); pdf.js's
+  full viewer (`web/pdf_viewer`), which brings its own interface and styles, rejected.
+
 ## Security and privacy posture
 
 - No network requests after load. No analytics, no third-party scripts, fonts bundled.
@@ -269,11 +312,12 @@ Milestone 5. Everything here is presentation, so it lives in settings and styles
 | ESLint has no type-aware rules | It parses TypeScript with Babel, because typescript-eslint needs the TypeScript 5/6 compiler API and the project uses TypeScript 7. Move to typescript-eslint when it supports 7. |
 | Ruled paper aligns only blocks the stylesheet knows (text, headings, lists, quotes, code, dividers, drawings) | A future block type must be given whole-line heights, or the text below it drifts off the rules (D14). |
 | A drawing whose block was deleted stays until its page is deleted permanently | Needed for undo (D13). Page purge is the only cleanup. |
+| Finding where files are used scans every page's document | On each change in Files, and on file delete and page purge. Fine for thousands of pages; measure with D3. |
 | No service worker | The app needs the network to load. PWA and offline shell are Milestone 8. |
-| Initial JS is 504 kB (158 kB gzip); the editor and drawing are a second file of 487 kB (158 kB gzip), loaded with the first page | Only the page screen is split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
+| Initial JS is 527 kB (165 kB gzip); the editor and drawing are a second file of 494 kB (159 kB gzip), loaded with the first page; the reader is 14 kB, PDF.js 444 kB (134 kB gzip) and its worker 1.3 MB, loaded with the first PDF | The page and file screens are split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
 | Sidebar is not resizable | It collapses to icons. Resizable panels are deferred. |
 | Tooltips are native `title` | No custom tooltip component yet. Icon-only buttons also carry `aria-label`. |
-| Backup is a single JSON string in memory | Fine for text. Binary attachments (Milestone 6) need a streamed or zipped format. |
+| Backup is a single JSON string in memory, files as base64 | Since 0.6.0 it carries PDFs and recordings: a third larger than the files, and capped at 400 MB (a browser string limit). A zipped, streamed format is the fix before files grow common. A "replace" restore's safety snapshot is a full copy, files included. |
 | Two tabs editing the same page | Last write wins. No conflict prompt yet. An open editor does not show the other tab's changes until reload. |
 | Dialog components and React StrictMode | A dialog that is mounted already open must not close itself from the native `close` event: in development React runs its effect twice. The command palette listens to `cancel` instead. `Dialog` and the drawer are always mounted, so they are not affected. |
 | All font subsets are emitted | Only the needed ones are fetched by the browser, but `dist/` carries all of them. |

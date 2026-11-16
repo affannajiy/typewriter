@@ -159,3 +159,54 @@ export interface Drawing extends Versioned {
   height: number;
   strokes: Stroke[];
 }
+
+/** What kind of file an attachment is. Since schema version 4. */
+export const ATTACHMENT_KINDS = ['pdf', 'audio'] as const;
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+
+/**
+ * A file kept in the workspace: a PDF or a sound recording. Pages show it
+ * through a `pdf` or `audio` block that names it by ID. The bytes are a row
+ * of their own (`AttachmentData`), so listing files never loads them.
+ * The bytes never change; the name can.
+ */
+export interface Attachment extends Versioned {
+  kind: AttachmentKind;
+  name: string;
+  /** The file's media type, for example `application/pdf` or `audio/webm;codecs=opus`. */
+  mimeType: string;
+  /** Size of the bytes. */
+  size: number;
+  /** Audio only: length in milliseconds, when known. */
+  durationMs: number | null;
+  /** PDF only: number of pages, when known. */
+  pageCount: number | null;
+}
+
+/** The bytes of an attachment. Same ID as the attachment. */
+export interface AttachmentData {
+  id: Id;
+  bytes: ArrayBuffer;
+}
+
+/** Highlight colours in the PDF reader. Ink names, shown through the theme's tokens. */
+export const HIGHLIGHT_COLOURS = ['yellow', 'green', 'blue', 'red'] as const;
+export type HighlightColour = (typeof HIGHLIGHT_COLOURS)[number];
+
+/**
+ * A highlight on one page of a PDF, with an optional note. Since schema
+ * version 4. Rectangles are fractions of the page (0 to 1), so they fit the
+ * page at any zoom.
+ */
+export interface Annotation extends Versioned {
+  attachmentId: Id;
+  /** Page number, from 1. */
+  page: number;
+  colour: HighlightColour;
+  /** Flat list of x, y, width, height quadruples, each 0 to 1 of the page. */
+  rects: number[];
+  /** The highlighted text, as the PDF gives it. */
+  quote: string;
+  /** The user's note. Empty when there is none. */
+  note: string;
+}

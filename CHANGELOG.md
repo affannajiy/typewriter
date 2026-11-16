@@ -3,6 +3,47 @@
 Versions follow [Semantic Versioning](https://semver.org/). Before 1.0.0, the public contracts are
 the database schema and the backup file format; both carry their own version numbers.
 
+## 0.6.0 — 2026-11-17
+
+Milestone 6 (PDF and audio).
+
+### Added
+
+- PDFs in pages. Type `/pdf` (or use the toolbar or the palette) and choose a file. The page shows
+  its name, pages and size; Open, or Enter on the block, opens the reader.
+- A PDF reader: pages fit the width or zoom from 50 to 300 %, go to a page by number, download.
+  Long PDFs stay light: only the pages near the screen are painted.
+- Highlights in yellow, green, blue or red: select text, choose a colour. Each highlight can carry a
+  note, saved as you type. Highlights stay on their words at any zoom; deleting one offers Undo.
+- Sound recording in pages. Type `/record`, then Record, Pause, Resume and Stop and save. Or choose a
+  sound file. A player in the page plays it back.
+- Files: every PDF and recording, which pages use it, filter by kind, play, open, rename, download.
+  A file no page uses can be deleted permanently, after a confirmation.
+- PDFs, recordings and highlights are part of backups.
+- 46 more unit and component tests and 2 more end-to-end journeys (362 unit, 13 journeys).
+
+### Changed
+
+- Database schema version 4: tables for files, their bytes, and highlights. Opening the app upgrades
+  the database; nothing existing changes.
+- Backup format version 2. Backups made by earlier versions still restore. A backup made by 0.6.0 is
+  refused by earlier versions, which ask to be updated. The restore limit is now 400 MB, and a backup
+  that would be larger is refused when it is made, with a message.
+- Permanently deleting a page also deletes the files that only it used.
+- Content Security Policy: allows playing recordings from the device (`blob:`), PDF.js's worker, and
+  WebAssembly for PDF image decoders. JavaScript `eval` stays forbidden.
+
+### Fixed
+
+- Code text in JetBrains Mono could fall back to another font in the production build: a small font
+  file was inlined and blocked by the Content Security Policy. Fonts are now always separate files.
+
+### Known limits
+
+- No highlights on scanned PDFs, no search inside a PDF, highlights are not written into the file.
+  Recordings are held in memory until stopped. Backups carry files as text, a third larger. See
+  DEVELOPMENT_ROADMAP.md, Milestone 6.
+
 ## 0.5.0 — 2026-11-17
 
 Milestone 5 (Writing atmosphere).

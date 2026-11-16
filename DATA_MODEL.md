@@ -1,7 +1,7 @@
 # Data Model
 
 Source: [`src/types/models.ts`](src/types/models.ts) and [`src/database/db.ts`](src/database/db.ts).
-Database name: `typenote`. Schema version: **3**. Backup format version: **1**.
+Database name: `typenote`. Schema version: **4**. Backup format version: **2**.
 
 ## Common fields
 
@@ -54,7 +54,7 @@ Database name: `typenote`. Schema version: **3**. Backup format version: **1**.
 
 Node types: `doc`, `paragraph`, `heading` (`level` 1 to 3), `bulletList`, `orderedList`, `listItem`,
 `taskList`, `taskItem` (`checked`), `blockquote`, `codeBlock`, `horizontalRule`, `drawing` (`drawingId`),
-`hardBreak`, `text`.
+`pdf` (`attachmentId`), `audio` (`attachmentId`), `hardBreak`, `text`.
 Marks: `bold`, `italic`, `underline`, `strike`, `code`. The list is defined once, in
 `schemaExtensions()` in [`src/features/editor/extensions.ts`](src/features/editor/extensions.ts).
 
@@ -88,6 +88,47 @@ real pressure; `points` is a flat list of `x, y, pressure` triples (pressure 0 t
 
 A row is created by the drawing's first save, so an empty drawing block leaves no row. Deleting a
 drawing block from the page does not delete the row, so undo can bring it back.
+
+A `pdf` or `audio` block holds only `attachmentId`, the ID of a row in `attachments`, or null while
+the block is new and has no file. It adds no text. Unlike drawings, two blocks may name the same file:
+a file's bytes never change, so a copy needs no copy.
+
+### `attachments` — index: `id, kind` (schema version 4)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `id`, `createdAt`, `updatedAt`, `rev` | | As above. No `deletedAt`: a file follows the pages that use it |
+| `kind` | `pdf` or `audio` | |
+| `name` | string, 1–200 | From the chosen file's name without its extension, or "Recording" and the date. Renaming is an edit |
+| `mimeType` | string | `application/pdf` for a PDF; `audio/…` for a recording, for example `audio/webm;codecs=opus` |
+| `size` | integer, 1 B to 100 MB | Bytes in `attachmentData` |
+| `durationMs` | integer or null | Recordings: measured while recording; sound files: as the browser reports it |
+| `pageCount` | integer or null | PDFs: from PDF.js when the file is added, corrected when it is opened |
+
+### `attachmentData` — index: `id` (schema version 4)
+
+`{ id, bytes: ArrayBuffer }`. Same ID as the attachment. Written once, in the same transaction as the
+attachment, and never changed. Kept apart so that listing files does not load them.
+
+### `annotations` — index: `id, attachmentId` (schema version 4)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `id`, `createdAt`, `updatedAt`, `rev` | | As above |
+| `attachmentId` | id | The PDF. Deleted with it |
+| `page` | integer ≥ 1 | PDF page number |
+| `colour` | `yellow`, `green`, `blue` or `red` | Shown through the theme's ink tokens |
+| `rects` | number[] | `x, y, width, height` quadruples, each 0 to 1 of the page, one per line of text |
+| `quote` | string, up to 10,000 | The highlighted text, spaces tidied |
+| `note` | string, up to 10,000 | Empty when there is none |
+
+### Lifetime of files
+
+A file is deleted only in two ways: from Files, by the user, after a confirmation and only when no
+page (in the Trash or not) has a block for it; or when the last page that used it is deleted
+permanently (purging a Trash batch, or emptying the Trash). Its bytes and highlights go with it.
+Removing a block keeps the file, so the editor's undo can bring the block back; such a file is listed
+in Files as "Not in any page".
 
 ### `writingDays` — index: `date` (schema version 3)
 
@@ -125,6 +166,9 @@ folder ─┬─< folder          (parentId)
         └─< page            (folderId)
 notebook ─< page            (notebookId)
 page ─< drawing             (pageId; the page's document names it by drawingId)
+page >─< attachment         (the page's document names it by attachmentId; no field on the file)
+attachment ─ attachmentData (same id)
+attachment ─< annotation    (attachmentId)
 tag >─< notebook, page      (tagIds)
 ```
 
@@ -145,15 +189,21 @@ parent is gone or trashed, the root returns to the top level and the user is tol
   "formatVersion": 1,
   "schemaVersion": 1,
   "exportedAt": "2026-11-16T11:00:00.000Z",
-  "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [], "drawings": [], "writingDays": [] }
+  "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [], "drawings": [], "writingDays": [],
+            "attachments": [], "attachmentData": [{ "id": "…", "data": "<base64>" }], "annotations": [] }
 }
 ```
 
-Includes trashed items. `drawings` is missing from files made before schema version 2, and
+Includes trashed items. `attachments`, `attachmentData` and `annotations` are missing from files made
+before format 2 (schema version 4) and are read as empty. Every file must have its bytes and the
+reverse; the decoded size must equal `size`; a PDF's bytes must start like a PDF; the media type must
+fit the kind; a highlight must name a file in the backup and have rectangles inside the page. A file's
+bytes are never replaced by a merge: "take newer" updates only its name. A backup that would be larger
+than the restore limit (400 MB) is refused when it is made. `drawings` is missing from files made before schema version 2, and
 `writingDays` and notebook `icon` before version 3; they are read as empty and as no icon. A day
 must be a real `YYYY-MM-DD` key with a whole, non-negative word count, once per file. A cover
 finish or icon outside the lists above rejects the file. Each stroke is checked: known tool and ink, numbers only, whole triples, at most 50,000
-points per stroke and 20,000 strokes per drawing. Limit: 200 MB. A file with a higher `formatVersion` or `schemaVersion` than
+points per stroke and 20,000 strokes per drawing. Limit: 400 MB. A file with a higher `formatVersion` or `schemaVersion` than
 the app knows is refused with a message to update.
 
 | Restore mode | Existing ID | New ID | Settings |
@@ -172,6 +222,7 @@ restore report: they are history, not items.
 | 1 | first release | First schema | — |
 | 2 | 0.4.0 | New table `drawings: 'id, pageId'` | Nothing to convert: no existing row changes. Tested by opening a version 1 database (`drawings.test.ts`) |
 | 3 | 0.5.0 | New table `writingDays: 'date'`; notebooks gain `icon` | Every notebook without `icon` gets `icon: null`. Tested by opening a version 2 database with a notebook and a drawing (`writing.test.ts`) |
+| 4 | 0.6.0 | New tables `attachments: 'id, kind'`, `attachmentData: 'id'`, `annotations: 'id, attachmentId'` | Nothing to convert. Tested by opening a version 3 database with a page and a words-written day (`attachments.test.ts`) |
 
 Never edit a released `this.version(n)` block. Add `this.version(n + 1).stores({...}).upgrade(tx => ...)`,
 bump `SCHEMA_VERSION`, add a migration test with data in the old shape, and extend
@@ -179,5 +230,4 @@ bump `SCHEMA_VERSION`, add a migration test with data in the old shape, and exte
 
 ## Planned entities
 
-Attachment, PDF Annotation, Audio Recording, Deck, Flashcard, Review Log, Link,
-Page Snapshot. Each arrives with its milestone, as a new schema version.
+Deck, Flashcard, Review Log, Link, Page Snapshot. Each arrives with its milestone, as a new schema version.

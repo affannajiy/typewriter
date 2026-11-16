@@ -2,12 +2,13 @@
 
 Your personal digital writing atelier: a private, local-first notebook that runs in the browser.
 
-**Status:** Milestones 1 to 5 of 8 are complete (foundation, database and organisation, writing editor,
-drawing, writing atmosphere). PDF, audio and study features are not built yet.
+**Status:** Milestones 1 to 6 of 8 are complete (foundation, database and organisation, writing editor,
+drawing, writing atmosphere, PDF and audio). Study features are not built yet.
 See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for the exact state of every feature.
 
 ## What works today
 
+- PDFs and sound recordings in pages (`/pdf`, `/record`). A PDF reader with zoom, page numbers, highlights in four colours and a note on each highlight. Recording with the microphone, with pause; or a sound file. A Files screen lists every file and where it is used.
 - Folders (nested), notebooks with coloured covers, and pages. A page can live in a notebook, in a folder, or on its own.
 - Rename, move, reorder, favourite and pin. Tags across the whole workspace.
 - A rich-text editor with autosave: headings, bold, italic, underline, lists, checklists, quotes, code and dividers. "Saved" appears only after the database confirms the write.

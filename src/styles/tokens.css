@@ -156,6 +156,8 @@
   /* Patterns pressed into a notebook cover, over the cover's own colour. */
   --tn-cover-light: rgb(255 255 255 / 0.16);
   --tn-cover-shade: rgb(0 0 0 / 0.14);
+  /* A PDF page is paper as printed: white in every theme, so its own colours read as their author meant. */
+  --tn-pdf-paper: #ffffff;
 }
 
 /* Interface density scales Tailwind's 4px spacing unit. */

@@ -1,0 +1,134 @@
+/*
+ * The PDF reader. A page is three layers: the painted canvas, the
+ * highlights, and PDF.js's text layer on top, whose transparent text is
+ * what a selection selects. The text-layer rules are the part of PDF.js's
+ * own viewer styles that the text layer needs (pdfjs-dist, web/pdf_viewer.css).
+ */
+
+.tn-reader-bar {
+  top: var(--tn-topbar);
+}
+@media (width >= 48rem) {
+  .tn-reader-bar {
+    top: 0;
+  }
+}
+
+.tn-pdf-page {
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  position: relative;
+  margin-inline: auto;
+  background: var(--tn-pdf-paper);
+  box-shadow: var(--tn-shadow);
+  outline: 1px solid var(--tn-border);
+  scroll-margin-top: calc(var(--tn-topbar) + 4rem);
+}
+.tn-pdf-page canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tn-highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tn-highlight {
+  position: absolute;
+  mix-blend-mode: multiply;
+  border-radius: 2px;
+}
+.tn-highlight[data-colour='yellow'] {
+  background: color-mix(in srgb, var(--tn-ink-yellow) 50%, transparent);
+}
+.tn-highlight[data-colour='green'] {
+  background: color-mix(in srgb, var(--tn-ink-green) 35%, transparent);
+}
+.tn-highlight[data-colour='blue'] {
+  background: color-mix(in srgb, var(--tn-ink-blue) 35%, transparent);
+}
+.tn-highlight[data-colour='red'] {
+  background: color-mix(in srgb, var(--tn-ink-red) 35%, transparent);
+}
+.tn-highlight[data-active] {
+  outline: 2px solid var(--tn-focus);
+  outline-offset: 1px;
+}
+.tn-swatch[data-colour='yellow'] {
+  background: var(--tn-ink-yellow);
+}
+.tn-swatch[data-colour='green'] {
+  background: var(--tn-ink-green);
+}
+.tn-swatch[data-colour='blue'] {
+  background: var(--tn-ink-blue);
+}
+.tn-swatch[data-colour='red'] {
+  background: var(--tn-ink-red);
+}
+
+.tn-pdf-page .textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.tn-pdf-page .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.tn-pdf-page .textLayer > :not(.markedContent),
+.tn-pdf-page .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.tn-pdf-page .textLayer .markedContent {
+  display: contents;
+}
+.tn-pdf-page .textLayer span[role='img'] {
+  user-select: none;
+  cursor: default;
+}
+.tn-pdf-page .textLayer ::selection {
+  background: color-mix(in srgb, var(--tn-accent) 35%, transparent);
+  color: transparent;
+}
+.tn-pdf-page .textLayer br::selection {
+  background: transparent;
+}
+.tn-pdf-page .textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+.tn-pdf-page .textLayer.selecting .endOfContent {
+  top: 0;
+}

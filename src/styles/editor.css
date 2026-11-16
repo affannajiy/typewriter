@@ -316,6 +316,20 @@
   padding-block: 0;
 }
 
+/* PDF and recording cards: a fixed design height, rounded up to whole lines. */
+.tn-page:not([data-paper='plain']) .tn-prose .tn-file {
+  margin-block: 0;
+  padding-block: 0;
+  border-width: 0;
+  box-shadow: 0 0 0 1px var(--tn-border);
+}
+.tn-page:not([data-paper='plain']) .tn-prose .tn-file[data-type='pdf'] {
+  min-height: round(up, 3.5rem, var(--tn-line));
+}
+.tn-page:not([data-paper='plain']) .tn-prose .tn-file[data-type='audio'] {
+  min-height: round(up, 6.5rem, var(--tn-line));
+}
+
 /*
  * Focus mode: only the page and its footer stay. The page screen sets
  * data-focus on the root while it is on.
@@ -328,12 +342,14 @@
   bottom: 0;
 }
 .tn-prose > *,
-.tn-drawing > * {
+.tn-drawing > *,
+.tn-file > * {
   transition: opacity var(--tn-motion);
 }
-/* A drawing keeps its card opaque, so the paper's rules never show through it: only its contents fade. */
-:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > :not(.has-focus, .node-drawing),
-:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > .node-drawing:not(.has-focus) .tn-drawing > * {
+/* A drawing or file keeps its card opaque, so the paper's rules never show through it: only its contents fade. */
+:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > :not(.has-focus, .node-drawing, .node-pdf, .node-audio),
+:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > .node-drawing:not(.has-focus) .tn-drawing > *,
+:root[data-focus] .tn-page[data-dim] .tn-prose.ProseMirror-focused > :is(.node-pdf, .node-audio):not(.has-focus) .tn-file > * {
   opacity: 0.35;
 }
 

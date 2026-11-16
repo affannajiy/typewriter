@@ -120,7 +120,7 @@ test('a backup restores a workspace on a clean browser', async ({ page, browser 
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^typenote-backup-\d{4}-\d{2}-\d{2}\.json$/);
   const backupPath = await file.path();
-  expect(JSON.parse(readFileSync(backupPath, 'utf8'))).toMatchObject({ app: 'typenote', formatVersion: 1 });
+  expect(JSON.parse(readFileSync(backupPath, 'utf8'))).toMatchObject({ app: 'typenote', formatVersion: 2 });
 
   // A new context is a different, empty browser profile.
   const clean = await browser.newContext();
@@ -128,7 +128,7 @@ test('a backup restores a workspace on a clean browser', async ({ page, browser 
   await fresh.goto(page.url());
   await fresh.getByTestId('restore-file').setInputFiles(backupPath);
   const dialog = fresh.getByRole('dialog', { name: 'Restore backup' });
-  await expect(dialog.getByText('This backup holds 0 folders, 1 notebook, 1 page and 0 tags.')).toBeVisible();
+  await expect(dialog.getByText('This backup holds 0 folders, 1 notebook, 1 page, 0 tags and 0 files.')).toBeVisible();
   await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(fresh.getByText('Restore complete: 2 added, 0 updated, 0 left unchanged.')).toBeVisible();
 

@@ -6,6 +6,7 @@
 @import '@fontsource-variable/jetbrains-mono';
 @import './tokens.css';
 @import './editor.css';
+@import './reader.css';
 
 /* Map the semantic tokens to Tailwind names: bg-surface, text-muted, ... */
 @theme inline {

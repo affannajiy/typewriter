@@ -2,6 +2,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { copyDrawing } from '@/database/repositories/drawings';
 import { DrawingBlock } from '@/features/drawing/DrawingBlock';
+import { AudioBlock, PdfBlock } from '@/features/files/FileBlocks';
 import type { Typewriter } from '@/features/pages/useTypewriter';
 import { t } from '@/i18n/en';
 import { measureCaret } from '@/services/carriage';
@@ -94,6 +95,7 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
           if (pageId) void copyDrawing(fromId, toId, pageId).catch((error: unknown) => console.error(error));
         },
       },
+      files: { pdf: { view: PdfBlock }, audio: { view: AudioBlock } },
     }),
     content: withBlockIds(initial),
     editable,

@@ -1,4 +1,4 @@
-import { FilePlus, House, Library, type LucideIcon, Menu as MenuIcon, PanelLeft, Search, Settings, Tag, Trash2, X } from 'lucide-react';
+import { FilePlus, House, Library, Paperclip, type LucideIcon, Menu as MenuIcon, PanelLeft, Search, Settings, Tag, Trash2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { Button, IconButton, cx } from '@/components/ui/Button';
@@ -20,6 +20,7 @@ const primary: Destination[] = [
   { to: '/', label: t.nav.home, icon: House, end: true },
   { to: '/library', label: t.nav.library, icon: Library },
   { to: '/tags', label: t.nav.tags, icon: Tag },
+  { to: '/files', label: t.nav.files, icon: Paperclip },
 ];
 const secondary: Destination[] = [
   { to: '/trash', label: t.nav.trash, icon: Trash2 },

@@ -1,6 +1,7 @@
 import { db } from '@/database/db';
 import type { Folder, Id, ItemKind, ItemRef, Notebook, Page } from '@/types/models';
 import { found, isLive, newId, now } from './common';
+import { deleteAttachmentsOnlyIn } from './attachments';
 import { deleteDrawingsOfPages } from './drawings';
 import { folderSubtreeIds } from './folders';
 import { patchPages } from './pages';
@@ -29,6 +30,8 @@ export interface RestoreResult {
 }
 
 const tables = () => [db.folders, db.notebooks, db.pages] as const;
+/** What a permanent deletion also touches: drawings and files belong to pages. */
+const fileTables = () => [db.drawings, db.attachments, db.attachmentData, db.annotations] as const;
 
 /** Move an item and its contents to the Trash. */
 export async function trashItem(ref: ItemRef): Promise<{ batchId: Id; count: number }> {
@@ -172,9 +175,11 @@ export async function restoreBatch(batchId: Id): Promise<RestoreResult> {
 
 /** Permanently delete one batch. This cannot be undone. */
 export async function purgeBatch(batchId: Id): Promise<number> {
-  return db.transaction('rw', [...tables(), db.drawings], async () => {
-    // A page's drawings go with it.
-    await deleteDrawingsOfPages(await db.pages.where('trashBatchId').equals(batchId).primaryKeys());
+  return db.transaction('rw', [...tables(), ...fileTables()], async () => {
+    // A page's drawings go with it, and so do files no other page uses.
+    const pageIds = await db.pages.where('trashBatchId').equals(batchId).primaryKeys();
+    await deleteDrawingsOfPages(pageIds);
+    await deleteAttachmentsOnlyIn(pageIds);
     const counts = await Promise.all([
       db.folders.where('trashBatchId').equals(batchId).delete(),
       db.notebooks.where('trashBatchId').equals(batchId).delete(),
@@ -186,9 +191,11 @@ export async function purgeBatch(batchId: Id): Promise<number> {
 
 /** Permanently delete everything in the Trash. This cannot be undone. */
 export async function emptyTrash(): Promise<number> {
-  return db.transaction('rw', [...tables(), db.drawings], async () => {
+  return db.transaction('rw', [...tables(), ...fileTables()], async () => {
     const trashed = (item: { deletedAt: number | null }) => item.deletedAt !== null;
-    await deleteDrawingsOfPages(await db.pages.filter(trashed).primaryKeys());
+    const pageIds = await db.pages.filter(trashed).primaryKeys();
+    await deleteDrawingsOfPages(pageIds);
+    await deleteAttachmentsOnlyIn(pageIds);
     const counts = await Promise.all([
       db.folders.filter(trashed).delete(),
       db.notebooks.filter(trashed).delete(),

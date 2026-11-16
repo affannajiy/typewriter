@@ -1,7 +1,7 @@
 # Testing
 
-**Last run:** 2026-11-17 — typecheck clean, lint clean, 316 unit and component tests passed, 22
-end-to-end tests passed (11 journeys × desktop and mobile), production build succeeded.
+**Last run:** 2026-11-17 — typecheck clean, lint clean, 362 unit and component tests passed, 26
+end-to-end tests passed (13 journeys × desktop and mobile), production build succeeded.
 
 ## How to run
 
@@ -40,6 +40,10 @@ shared controls. One end-to-end test per critical journey; variations are tested
 | `src/database/repositories/repositories.test.ts` | Folders (create, rename, nest, cycle refusal), notebooks (edit and move without touching pages, invalid colour), pages (draft save, plain text, missing page fails loudly, move keeps ID, open is not an edit, reorder), tags (case-insensitive reuse, delete strips references), trash (subtree batch, exact restore, restore when the parent is gone, permanent delete only of trashed rows) |
 | `src/database/repositories/drawings.test.ts` | Drawings: created by the first save, updated with a revision, height bounded; a copy gets its own strokes, once, and only from a drawing that exists; kept through Trash and restore; deleted with the page by a permanent delete or by emptying the Trash, and only then. Schema version 2: a version 1 database opens with its pages and settings intact and an empty `drawings` table |
 | `src/database/repositories/writing.test.ts` | Words written: a save adds what it made longer, deleting does not subtract, the title does not count; per calendar day and in date order; a failed save counts nothing. `summariseWriting`: streak from today, kept while today is empty, broken by a gap; seven days with empty days as zero. Notebook finishes and icons: defaults, kept on an edit that leaves them out, unknown values refused. Backups: covers, icons and days round trip; a merge keeps this device's day unless asked for newer; an older file restores; a bad day, finish or icon rejects the file and says where. Schema version 3: a version 2 database opens with its notebook (now `icon: null`) and drawing intact and an empty `writingDays` |
+| `src/database/repositories/attachments.test.ts` | Files: bytes stored apart and not listed; empty, unknown-type, fake-PDF and over-100-MB files refused with nothing written; rename is an edit; file IDs found at any depth in a document; where a file is used, live and in the Trash; delete refused while a live or trashed page uses it, then removes bytes and highlights; a purge deletes only files no remaining page uses, and leaves unrelated unused files; emptying the Trash likewise. Highlights: reading order, edits with revision, rectangles kept inside the page, no-area and missing-file refused, delete and Undo restore it exactly. Backups: files, bytes and highlights round trip; a merge never replaces bytes; replace brings files back; a backup over the limit is not made; damaged base64, wrong size, a non-PDF, missing bytes, unknown kind or type, a highlight on a missing file or outside the page each reject the file and say where; a format 1 backup restores. Schema version 4: a version 3 database opens intact with empty file tables |
+| `src/features/files/highlights.test.ts` | Selection pieces merged per line with word gaps; separate lines and distant pieces kept apart; empty pieces dropped; rectangles as page fractions, equal at two zooms; clipping to the page; boxes taller than a quarter page ignored; hit test; quote tidying. Base64: round trip of 200 kB and of nothing; invalid text refused |
+| `src/services/recorder.test.ts` | Not offered without MediaRecorder; format choice; record, pause (not counted), resume, stop with the bytes and length, microphone released; refused, missing and failing microphones explained; length and file-extension formatting |
+| `src/features/files/files.test.tsx` | PDF and recording blocks in the schema, with block IDs and no text; slash menu and commands insert empty blocks; Enter on a selected PDF opens it. PDF block: a chosen file is stored with its page count and shown; a file PDF.js cannot open is refused with a message; a missing file is explained. Recording block: record, pause, resume, stop and save into the block, with a player; a refused microphone is explained; without recording support only "Choose a sound file" is offered. Files screen: empty state; where each file is used, with links; filter; a used file cannot be deleted; an unused one is deleted after a confirmation whose safe button has focus; rename |
 | `src/database/backup/backup.test.ts` | Drawings saved and restored with their page; a backup from before drawings restores; a damaged stroke (unknown ink, uneven points, a non-number) rejects the file and says where. Round trip into an empty workspace including Trash and settings; the three restore modes; undo of a replace; a failure in the middle of a replace leaves the workspace untouched; dangling references and folder cycles repaired; rejection of non-JSON, foreign files, newer versions, wrong types (with the path), invalid colours, duplicate IDs, prototype keys; unknown fields and settings dropped |
 | `src/services/autosave.test.ts` | Debounce; "saved" only after the write resolves; no overlapping writes; an edit during a write is not reported as saved; a failed write keeps its value and retries; flush; dispose writes outstanding text |
 | `src/services/typewriterSound.test.ts` | Each machine has its own bell, and a longer carriage passes more rack teeth (office > desk > portable); an unknown machine plays the desk machine; the machine setting defaults to desk. Which edit plays which sound (typing, space, Enter, delete; paste, cut, undo silent); every sound builds; the bell rings alone, and with the carriage return only when asked; a longer line gives a longer return; no error without Web Audio, without panner, reverb or limiter, or when audio fails; one shared audio context; volume; silent at volume 0; a held key does not buzz but shift and return always play; sound settings validation; margin bell and wrap decisions (`carriageEvents`) |
@@ -67,6 +71,8 @@ shared controls. One end-to-end test per critical journey; variations are tested
 9. **The sheets layout breaks the text into pages, and the paper settings apply.** No block is cut by a sheet edge, also after text is added above a break and after a reload; the sheet count is shown; Letter paper and wide margins change the sheet's shape and margins.
 10. **A drawing is made in a page, saved, reopened and downloaded as an image.** `/draw` adds a drawing and opens it; two strokes drawn with the mouse, one in red; the eraser cuts the red one in two; "Saved"; the PNG download has the right name; Done shows the preview and the word count is unchanged; after a reload the preview is there, and opening it with a click adds no stroke; Escape closes.
 11. **The writing atmosphere.** Typewriter typeface, large text, lined paper and a goal of 10 words in Settings; a notebook edited to stripes and a leaf icon, which survive a reload; a page with paragraphs and a heading in JetBrains Mono at 20 px on a ruled background, where every block starts exactly on a rule; focus mode hides the toolbar and all navigation, typing goes on, Escape brings them back and the text is saved; the desk says the goal is reached and shows seven days.
+12. **A PDF is kept in a page, read, highlighted with a note** (`e2e/files.spec.ts`). A two-page PDF made by the test (`e2e/pdfFixture.ts`) is added with `/pdf`; the card shows "PDF · 2 pages"; the reader opens, the canvas is painted, a line is selected and highlighted in yellow, and the highlight covers over 80 % of the text's box; a note is typed and "Note saved" appears; after zooming in the highlight still covers the text; "go to page 2" scrolls page 2 into view; after a reload the highlight and note are there; Files lists the PDF with its page. No Content Security Policy violation is logged.
+13. **A recording is made with the microphone** (Chromium's stand-in microphone). `/record`, Record, the timer passes 0:02, Stop and save; the player's sound decodes from the stored bytes (no media error, metadata read); after a reload the player is there; Files lists it in its page, plays it, and downloads it with a `.webm`, `.ogg` or `.m4a` name. No Content Security Policy violation is logged.
 
 ## Not tested, or tested by hand only
 
@@ -100,10 +106,23 @@ shared controls. One end-to-end test per critical journey; variations are tested
 | Performance with a large workspace | Not measured. See ARCHITECTURE.md, decision D3 |
 | GitHub Actions workflow and live Pages deployment | Written, never run |
 | PWA install and offline | Not built |
+| Recording on Safari, Firefox, iOS, Android, or with a real microphone | Not run. Chromium's stand-in microphone only |
+| Real-world PDFs: large, scanned, damaged, encrypted, right-to-left or East Asian text | Not run. The test PDF is made by the test. Character maps and fonts are shipped but not exercised |
+| Selecting PDF text with a mouse drag or a finger | The end-to-end test selects with the Selection API; the rectangles come from the real layout. A drag was not automated |
+| A recording still running when its block is removed or the page is left; the warning on closing the tab | Implemented, not automated |
+| A sound file chosen instead of recording | Component test only (jsdom cannot read lengths) |
+| Ruled paper with PDF and recording cards | Measured once by a throwaway script in Chromium, desktop and phone: every block started on a whole line. Not in the suite |
+| The reader on a screen reader, and by keyboard alone | Every control is a named native control and the notes list reaches every highlight; not walked through |
 
 A flaky test is fixed or quarantined the day it is found. One was found in Milestone 2 (a radio
 button checked before its database write landed) and fixed by waiting on the stored state; the
 end-to-end helper `choose()` now does that for every radio button.
+
+Milestone 6's checks found three defects before release: in production one JetBrains Mono font
+subset (since 0.3.0) was inlined by the build as a `data:` URL and blocked by the Content Security
+Policy, so code text fell back to another font (found by the new journeys' policy watch; fonts are now
+always files); the Files screen pulled the whole editor into the first download (+360 kB), because it
+shared a file with the editor blocks; and on a phone the reader's title was cut to a few letters.
 
 Milestone 5's checks found three defects before release: the daily-goal field could overwrite what
 was being typed with a value stored a moment earlier; Escape did not leave focus mode in a real

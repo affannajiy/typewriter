@@ -87,7 +87,7 @@ describe('the page editor', () => {
   it('every toolbar button has a name, and toggles report their state', () => {
     renderEditor(textToDoc('Text'));
     const buttons = within(screen.getByRole('toolbar')).getAllByRole('button');
-    expect(buttons).toHaveLength(16);
+    expect(buttons).toHaveLength(18);
     for (const button of buttons) expect(button).toHaveAccessibleName();
     expect(screen.getByRole('button', { name: /^Bold/ })).toHaveAttribute('aria-pressed');
     expect(screen.getByRole('button', { name: 'Drawing' })).not.toHaveAttribute('aria-pressed');

@@ -1,6 +1,6 @@
 # Development Roadmap and Implementation Checklist
 
-**Last updated:** 2026-11-17 · **Version:** 0.5.0
+**Last updated:** 2026-11-17 · **Version:** 0.6.0
 
 Status words: **Not started**, **In progress**, **Implemented** (works, not yet covered by an
 automated test), **Tested** (works and has automated tests), **Blocked**.
@@ -12,8 +12,8 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | 3 Writing editor | Done, with the gaps listed below |
 | 4 Drawing | Done, with the gaps listed below |
 | 5 Writing atmosphere | Done, with the gaps listed below |
-| 6 PDF and audio | Not started (next) |
-| 7 Study features | Not started |
+| 6 PDF and audio | Done, with the gaps listed below |
+| 7 Study features | Not started (next) |
 | 8 Polish and deployment | Not started (the deploy workflow exists but has never run) |
 
 ## Milestone 1 — Foundation
@@ -41,7 +41,7 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Item | Status | Note |
 | --- | --- | --- |
 | Dexie schema v1, repository layer | Tested | |
-| Migrations | Tested | Version 2 (drawings) and 3 (notebook icons, words written); opening a version 1 and a version 2 database is tested |
+| Migrations | Tested | Version 2 (drawings), 3 (notebook icons, words written) and 4 (files, highlights); opening a version 1, 2 and 3 database is tested |
 | Folders: create, rename, nest, move, reorder | Tested | Cycle prevention tested |
 | Notebooks: create, edit details, cover colour, move, reorder, favourite, tags | Tested | |
 | Pages: create anywhere, move, reorder, favourite, pin, tags | Tested | |
@@ -169,11 +169,51 @@ Since Milestone 3 the sounds follow the editor: the edit is taken from the brows
 event (or from the key, for Enter and the delete keys), and the caret is measured from the editor
 (`coordsAtPos`).
 
-## Milestones 5 to 8
+## Milestone 6 — PDF and audio
 
-As in the master specification: sounds, covers, paper, focus mode, statistics (5); PDF.js reader,
-annotations, recording, audio library (6); KaTeX, flashcards with FSRS, backlinks, graph (7);
-dashboard polish, accessibility pass, PWA and offline, first real deployment (8).
+| Item | Status | Note |
+| --- | --- | --- |
+| Schema v4: `attachments`, `attachmentData`, `annotations`, with migration test | Tested | A version 3 database opens with its pages and words-written days intact |
+| Files stored on the device, bytes apart from details | Tested | Listing files never loads their bytes. 100 MB per file. Type and size checked; a "PDF" must start like one |
+| PDF block: `/pdf`, toolbar, palette; choose a file; name, pages and size; Open, or Enter on the block | Tested | Unit and end-to-end. PDF.js must open the file, or it is refused with a message |
+| PDF reader (PDF.js 6.5) | Tested | Its own screen, `#/file/<id>`. Pages painted only near the screen and released far from it; selectable text layer; fit to width, zoom 50 to 300 %; go to page by number; download |
+| Highlights in four colours, with a note on each | Tested | Select text, choose a colour. Stored as fractions of the page, so they stay on the words at any zoom (end-to-end checks it after zooming). Notes save as you type, "Note saved" after the write. Delete has Undo |
+| Recording block: `/record`; record, pause, resume, stop and save | Tested | Unit with a stand-in recorder; end-to-end with Chromium's stand-in microphone. Opus in WebM or Ogg, AAC in MP4 on Safari, 64 kbit/s. Stops itself at 100 MB |
+| A recording running when its block goes is saved in Files; closing the tab asks first | Implemented | Not automated |
+| Sound file instead of a recording | Tested (component) | Length read by the browser when it can tell |
+| Player for recordings | Tested | Plays from the stored bytes through a blob: URL; end-to-end checks that it decodes under the Content Security Policy |
+| Files screen ("audio library"): all PDFs and recordings, filter, where each is used, play, open, rename, download | Tested | Component and end-to-end |
+| Deleting files | Tested | From Files, only when no page uses it, after a confirmation. With the last page that used it, when that page is deleted permanently. Removing the block keeps the file, so undo works |
+| Backups with files (format 2) | Tested | Bytes as base64; checked like every record (type, size, bytes match, PDF signature, highlights on known files). A backup over 400 MB is refused when made, not when restored. Format 1 files still restore |
+| PDF.js data files served from the app | Tested | Fonts, character maps, colour profiles and image decoders copied into `dist/pdfjs/` (3.2 MB). No other site is contacted |
+
+**Gaps, on purpose or still owed:**
+
+- **Highlights need a text layer.** A scanned PDF has no text to select, so it cannot be highlighted.
+  No free drawing, shapes, sticky notes or ink on PDF pages.
+- **No search inside a PDF**, no outline or thumbnails, no page rotation. Highlights are not shown
+  in the page that holds the PDF, and highlight text is not in global search.
+- **No PDF export of a page** and no PDF annotations written into the file: highlights stay in
+  TypeNote and in its backups.
+- **Recordings are kept in memory until stopped.** A crash or a closed tab during a recording loses
+  it. No timestamps linking a recording to the notes typed while it ran.
+- **Recording is started from a page only.** The Files screen lists and plays, but has no record
+  button and no upload of its own.
+- **Backups are one JSON text with base64 bytes**, so files cost a third more space in a backup, and
+  a workspace whose backup would pass 400 MB cannot be backed up until files are deleted or
+  downloaded. A zipped format is the fix (ARCHITECTURE.md, Known limits).
+- Two blocks can show the same file (a duplicated or pasted block). That is on purpose: a file's
+  bytes never change, and its highlights are shared.
+- On ruled paper, a PDF or recording card has a minimum height in whole lines, but a card whose
+  controls wrap to more rows on a narrow screen (an empty recording block, a recording in progress)
+  can leave the text below it off the rules.
+- Not tried: Safari or Firefox recording, iOS, a real microphone, large or damaged real-world PDFs,
+  right-to-left PDFs, a screen reader in the reader.
+
+## Milestones 7 and 8
+
+As in the master specification: KaTeX, flashcards with FSRS, backlinks, graph (7); dashboard polish,
+accessibility pass, PWA and offline, first real deployment (8).
 
 ## Open questions for the owner
 

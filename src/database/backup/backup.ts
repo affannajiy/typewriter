@@ -1,7 +1,8 @@
 import { SCHEMA_VERSION, db } from '@/database/db';
 import { newId, now } from '@/database/repositories/common';
-import type { Drawing, Folder, Id, Notebook, Page, SafetySnapshot, Tag } from '@/types/models';
-import { BACKUP_FORMAT_VERSION, type BackupData, type BackupFile, parseBackup } from './validate';
+import type { Annotation, Drawing, Folder, Id, Notebook, Page, SafetySnapshot, Tag } from '@/types/models';
+import { bytesToBase64 } from '@/utils/base64';
+import { BACKUP_FORMAT_VERSION, type BackupData, BackupError, type BackupFile, MAX_BACKUP_BYTES, parseBackup } from './validate';
 
 export { BackupError, parseBackup, type BackupFile } from './validate';
 
@@ -13,11 +14,11 @@ export { BackupError, parseBackup, type BackupFile } from './validate';
  * snapshot of the old workspace first, so the user can undo it.
  */
 
-const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays] as const;
+const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays, db.attachments, db.attachmentData, db.annotations] as const;
 const SNAPSHOTS_KEPT = 3;
 
 async function readAll(): Promise<BackupData> {
-  const [folders, notebooks, pages, tags, settings, drawings, writingDays] = await Promise.all([
+  const [folders, notebooks, pages, tags, settings, drawings, writingDays, attachments, attachmentData, annotations] = await Promise.all([
     db.folders.toArray(),
     db.notebooks.toArray(),
     db.pages.toArray(),
@@ -25,8 +26,11 @@ async function readAll(): Promise<BackupData> {
     db.settings.toArray(),
     db.drawings.toArray(),
     db.writingDays.toArray(),
+    db.attachments.toArray(),
+    db.attachmentData.toArray(),
+    db.annotations.toArray(),
   ]);
-  return { folders, notebooks, pages, tags, settings, drawings, writingDays };
+  return { folders, notebooks, pages, tags, settings, drawings, writingDays, attachments, attachmentData, annotations };
 }
 
 /** A full copy of the workspace, including items in the Trash. */
@@ -41,7 +45,16 @@ export async function createBackup(): Promise<BackupFile> {
   };
 }
 
-export const serialiseBackup = (file: BackupFile): string => JSON.stringify(file);
+/**
+ * The backup as text. File bytes become base64. A backup larger than the app
+ * can restore is refused here, so no one keeps a backup that cannot be used.
+ */
+export function serialiseBackup(file: BackupFile, limit = MAX_BACKUP_BYTES): string {
+  const attachmentData = file.data.attachmentData.map((entry) => ({ id: entry.id, data: bytesToBase64(entry.bytes) }));
+  const text = JSON.stringify({ ...file, data: { ...file.data, attachmentData } });
+  if (text.length > limit) throw new BackupError('export-too-large');
+  return text;
+}
 
 export function backupFileName(date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -49,7 +62,7 @@ export function backupFileName(date = new Date()): string {
 }
 
 export interface BackupSummary {
-  counts: { folders: number; notebooks: number; pages: number; tags: number };
+  counts: { folders: number; notebooks: number; pages: number; tags: number; files: number };
   /** Records in the file whose ID already exists in this workspace. */
   duplicates: number;
   workspaceIsEmpty: boolean;
@@ -61,7 +74,7 @@ export async function analyseBackup(file: BackupFile): Promise<BackupSummary> {
   const { folders, notebooks, pages, tags } = file.data;
   const incoming = [...folders, ...notebooks, ...pages, ...tags];
   return {
-    counts: { folders: folders.length, notebooks: notebooks.length, pages: pages.length, tags: tags.length },
+    counts: { folders: folders.length, notebooks: notebooks.length, pages: pages.length, tags: tags.length, files: file.data.attachments.length },
     duplicates: incoming.filter((r) => existing.has(r.id)).length,
     workspaceIsEmpty: existing.size === 0,
   };
@@ -149,6 +162,9 @@ async function replaceAll(data: BackupData): Promise<void> {
   await db.settings.bulkAdd(data.settings);
   await db.drawings.bulkAdd(data.drawings);
   await db.writingDays.bulkAdd(data.writingDays);
+  await db.attachments.bulkAdd(data.attachments);
+  await db.attachmentData.bulkAdd(data.attachmentData);
+  await db.annotations.bulkAdd(data.annotations);
 }
 
 export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promise<RestoreReport> {
@@ -159,7 +175,7 @@ export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promis
     report.snapshotId = await saveSnapshot();
     await db.transaction('rw', allTables(), async () => {
       await replaceAll(data);
-      report.added = data.folders.length + data.notebooks.length + data.pages.length + data.tags.length;
+      report.added = data.folders.length + data.notebooks.length + data.pages.length + data.tags.length + data.attachments.length;
       report.repaired = await repairReferences();
     });
     return report;
@@ -188,6 +204,23 @@ export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promis
     await merge<Page>(db.pages, data.pages);
     await merge<Tag>(db.tags, data.tags);
     await merge<Drawing>(db.drawings, data.drawings);
+    // A file's bytes never change, so they arrive with a new file and are never replaced.
+    const bytes = new Map(data.attachmentData.map((entry) => [entry.id, entry]));
+    for (const file of data.attachments) {
+      const existing = await db.attachments.get(file.id);
+      if (!existing) {
+        await db.attachments.put(file);
+        await db.attachmentData.put(bytes.get(file.id)!);
+        report.added++;
+      } else if (mode === 'merge-newer' && file.updatedAt > existing.updatedAt) {
+        await db.attachments.put({ ...file, kind: existing.kind, mimeType: existing.mimeType, size: existing.size });
+        report.updated++;
+      } else {
+        report.skipped++;
+      }
+    }
+    // Highlights are notes on a file: they are merged like content.
+    await merge<Annotation>(db.annotations, data.annotations);
     // Words-written days are history, not content: they are not counted in the report.
     for (const day of data.writingDays) {
       const existing = await db.writingDays.get(day.date);

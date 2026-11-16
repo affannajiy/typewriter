@@ -4,6 +4,7 @@ import { Focus, Placeholder } from '@tiptap/extensions';
 import StarterKit from '@tiptap/starter-kit';
 import { Suggestion, type SuggestionProps } from '@tiptap/suggestion';
 import { DrawingNode, type DrawingNodeOptions } from '@/features/drawing/drawingNode';
+import { AudioNode, type FileNodeOptions, PdfNode } from '@/features/files/fileNodes';
 import { t } from '@/i18n/en';
 import type { DocNode } from '@/types/models';
 import { BlockId } from './blockIds';
@@ -82,13 +83,15 @@ const BlockKeymap = Extension.create({
 export const BLOCK_SHORTCUTS = { moveUp: 'Alt+Shift+↑', moveDown: 'Alt+Shift+↓', duplicate: 'Mod+Shift+D' };
 
 /** The document schema: the same list everywhere a document is read or checked. */
-export function schemaExtensions(drawing: Partial<DrawingNodeOptions> = {}): AnyExtension[] {
+export function schemaExtensions(drawing: Partial<DrawingNodeOptions> = {}, files: { pdf?: Partial<FileNodeOptions>; audio?: Partial<FileNodeOptions> } = {}): AnyExtension[] {
   return [
     // Links need their own interface (open, edit, remove). Until it exists, pasted addresses stay plain text.
     StarterKit.configure({ link: false, heading: { levels: [1, 2, 3] } }),
     TaskList,
     TaskItem.configure({ nested: true, a11y: { checkboxLabel: (_node, checked) => (checked ? t.editor.taskDone : t.editor.taskNotDone) } }),
     DrawingNode.configure(drawing),
+    PdfNode.configure(files.pdf ?? {}),
+    AudioNode.configure(files.audio ?? {}),
     BlockId,
   ];
 }
@@ -116,11 +119,12 @@ export interface EditorWiring {
   slash: SlashBridge;
   pagination: PaginationOptions;
   drawing: Partial<DrawingNodeOptions>;
+  files?: { pdf?: Partial<FileNodeOptions>; audio?: Partial<FileNodeOptions> };
 }
 
 export function editorExtensions(wiring: EditorWiring): AnyExtension[] {
   return [
-    ...schemaExtensions(wiring.drawing),
+    ...schemaExtensions(wiring.drawing, wiring.files),
     Placeholder.configure({ placeholder: t.page.bodyPlaceholder }),
     // Marks the top-level block that holds the caret. Focus mode fades the others (editor.css).
     Focus.configure({ className: 'has-focus', mode: 'shallowest' }),

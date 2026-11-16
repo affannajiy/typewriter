@@ -7,6 +7,7 @@ import { EmptyState, LoadingBlock } from '@/components/ui/Layout';
 import { ToastProvider } from '@/components/ui/Toast';
 import { db } from '@/database/db';
 import { DashboardScreen } from '@/features/dashboard/DashboardScreen';
+import { FilesScreen } from '@/features/files/FilesScreen';
 import { LibraryScreen } from '@/features/library/LibraryScreen';
 import { NotebookScreen } from '@/features/library/NotebookScreen';
 import { NotFound } from '@/features/pages/NotFound';
@@ -19,6 +20,8 @@ import { t } from '@/i18n/en';
 
 // The editor is the heaviest part of the app. It loads when a page is first opened.
 const PageScreen = lazy(() => import('@/features/pages/PageScreen'));
+// The PDF reader brings PDF.js, loaded when a file is first opened.
+const FileScreen = lazy(() => import('@/features/files/FileScreen'));
 
 const reload = () => window.location.reload();
 
@@ -99,6 +102,15 @@ export function App() {
                 element={
                   <Suspense fallback={<LoadingBlock />}>
                     <PageScreen />
+                  </Suspense>
+                }
+              />
+              <Route path="files" element={<FilesScreen />} />
+              <Route
+                path="file/:fileId"
+                element={
+                  <Suspense fallback={<LoadingBlock />}>
+                    <FileScreen />
                   </Suspense>
                 }
               />

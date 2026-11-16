@@ -1,7 +1,9 @@
 import { SCHEMA_VERSION } from '@/database/db';
+import { MAX_ATTACHMENT_BYTES, MAX_NOTE_LENGTH, MAX_QUOTE_LENGTH, isAllowedMime, looksLikePdf } from '@/database/repositories/attachments';
 import { MAX_NAME_LENGTH } from '@/database/repositories/common';
 import { SETTING_KEYS, isValidSetting } from '@/features/settings/model';
-import { COVER_KINDS, DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag, type WritingDay } from '@/types/models';
+import { ATTACHMENT_KINDS, type Annotation, type Attachment, type AttachmentData, COVER_KINDS, HIGHLIGHT_COLOURS, DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag, type WritingDay } from '@/types/models';
+import { base64ToBytes } from '@/utils/base64';
 import { isHexColour } from '@/utils/colour';
 
 /**
@@ -12,8 +14,13 @@ import { isHexColour } from '@/utils/colour';
  * whole file, and nothing is repaired silently.
  */
 
-export const BACKUP_FORMAT_VERSION = 1;
-export const MAX_BACKUP_BYTES = 200 * 1024 * 1024;
+/** Version 2 (0.6.0) adds files: their bytes are base64 text in `attachmentData`. */
+export const BACKUP_FORMAT_VERSION = 2;
+/**
+ * The largest backup that can be restored. A backup is read as one string,
+ * and browsers cap a string at about 500 million characters.
+ */
+export const MAX_BACKUP_BYTES = 400 * 1024 * 1024;
 
 export interface BackupData {
   folders: Folder[];
@@ -25,6 +32,11 @@ export interface BackupData {
   drawings: Drawing[];
   /** Missing from files written before schema version 3; read as empty. */
   writingDays: WritingDay[];
+  /** Missing from files written before schema version 4 (format 2); read as empty. */
+  attachments: Attachment[];
+  /** In the file, each entry's bytes are base64 text in `data`. */
+  attachmentData: AttachmentData[];
+  annotations: Annotation[];
 }
 
 export interface BackupFile {
@@ -35,7 +47,7 @@ export interface BackupFile {
   data: BackupData;
 }
 
-export type BackupErrorCode = 'too-large' | 'not-json' | 'not-typenote' | 'newer-version' | 'invalid-record' | 'duplicate-id';
+export type BackupErrorCode = 'too-large' | 'export-too-large' | 'not-json' | 'not-typenote' | 'newer-version' | 'invalid-record' | 'duplicate-id';
 
 export class BackupError extends Error {
   constructor(
@@ -251,6 +263,74 @@ function writingDay(v: unknown, path: string): WritingDay {
   return { date, words, updatedAt: num(r.updatedAt, `${path}.updatedAt`) };
 }
 
+function attachment(v: unknown, path: string): Attachment {
+  const r = obj(v, path);
+  const kind = oneOf(r.kind, ATTACHMENT_KINDS, `${path}.kind`);
+  const mimeType = str(r.mimeType, `${path}.mimeType`, 100);
+  if (!isAllowedMime(kind, mimeType)) fail(`${path}.mimeType`);
+  const size = num(r.size, `${path}.size`);
+  if (!Number.isInteger(size) || size <= 0 || size > MAX_ATTACHMENT_BYTES) fail(`${path}.size`);
+  const count = (value: unknown, at: string) => {
+    if (value === null || value === undefined) return null;
+    const n = num(value, at);
+    return Number.isInteger(n) && n >= 0 ? n : fail(at);
+  };
+  return {
+    ...versioned(r, path),
+    kind,
+    name: str(r.name, `${path}.name`),
+    mimeType,
+    size,
+    durationMs: count(r.durationMs, `${path}.durationMs`),
+    pageCount: count(r.pageCount, `${path}.pageCount`),
+  };
+}
+
+function attachmentData(v: unknown, path: string): AttachmentData {
+  const r = obj(v, path);
+  // Base64 is four characters for every three bytes.
+  const text = str(r.data, `${path}.data`, Math.ceil(MAX_ATTACHMENT_BYTES / 3) * 4);
+  const bytes = base64ToBytes(text);
+  return { id: id(r.id, `${path}.id`), bytes: bytes ?? fail(`${path}.data`) };
+}
+
+function annotation(v: unknown, path: string): Annotation {
+  const r = obj(v, path);
+  const rects = list(r.rects, `${path}.rects`);
+  if (rects.length === 0 || rects.length % 4 !== 0 || rects.length > 4 * 2000) fail(`${path}.rects`);
+  const page = num(r.page, `${path}.page`);
+  if (!Number.isInteger(page) || page < 1) fail(`${path}.page`);
+  return {
+    ...versioned(r, path),
+    attachmentId: id(r.attachmentId, `${path}.attachmentId`),
+    page,
+    colour: oneOf(r.colour, HIGHLIGHT_COLOURS, `${path}.colour`),
+    rects: rects.map((value, i) => {
+      const n = num(value, `${path}.rects[${i}]`);
+      return n >= 0 && n <= 1 ? n : fail(`${path}.rects[${i}]`);
+    }),
+    quote: str(r.quote, `${path}.quote`, MAX_QUOTE_LENGTH),
+    note: str(r.note, `${path}.note`, MAX_NOTE_LENGTH),
+  };
+}
+
+/** Every file has its bytes and every set of bytes has its file; sizes match; a PDF looks like one. */
+function checkFiles(files: Attachment[], data: AttachmentData[], annotations: Annotation[]): void {
+  const byId = new Map(files.map((file) => [file.id, file]));
+  data.forEach((entry, i) => {
+    const file = byId.get(entry.id);
+    if (!file) fail(`attachmentData[${i}].id`);
+    else if (entry.bytes.byteLength !== file.size || (file.kind === 'pdf' && !looksLikePdf(entry.bytes))) fail(`attachmentData[${i}].data`);
+  });
+  const withData = new Set(data.map((entry) => entry.id));
+  files.forEach((file, i) => {
+    if (!withData.has(file.id)) fail(`attachments[${i}].id`);
+  });
+  annotations.forEach((item, i) => {
+    if (!byId.has(item.attachmentId)) fail(`annotations[${i}].attachmentId`);
+  });
+}
+
 function tag(v: unknown, path: string): Tag {
   const r = obj(v, path);
   return { ...versioned(r, path), name: str(r.name, `${path}.name`, 40), colour: colour(r.colour, `${path}.colour`) };
@@ -316,6 +396,15 @@ export function parseBackup(text: string): BackupFile {
       settings: settings(d.settings ?? [], 'settings'),
       drawings: d.drawings === undefined ? [] : unique(each('drawings', drawing), 'drawings'),
       writingDays: d.writingDays === undefined ? [] : uniqueDays(each('writingDays', writingDay)),
+      ...files(),
     },
   };
+
+  function files() {
+    const attachments = d.attachments === undefined ? [] : unique(each('attachments', attachment), 'attachments');
+    const data = d.attachmentData === undefined ? [] : unique(each('attachmentData', attachmentData), 'attachmentData');
+    const annotations = d.annotations === undefined ? [] : unique(each('annotations', annotation), 'annotations');
+    checkFiles(attachments, data, annotations);
+    return { attachments, attachmentData: data, annotations };
+  }
 }

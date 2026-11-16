@@ -11,7 +11,7 @@ import type { DocNode } from '@/types/models';
  * a copy gets a new one.
  */
 
-export const BLOCK_TYPES = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'horizontalRule', 'drawing'];
+export const BLOCK_TYPES = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'horizontalRule', 'drawing', 'pdf', 'audio'];
 
 const blockTypes = new Set(BLOCK_TYPES);
 
