@@ -49,6 +49,8 @@ export function TagPicker({ tags, selected, onChange }: { tags: Tag[]; selected:
           </label>
           <input
             id="new-tag"
+            // The field appears because the user pressed "Add tag": typing must continue there.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             list={listId}
             value={name}

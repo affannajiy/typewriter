@@ -40,82 +40,60 @@ export function carriageEvents(before: CaretPlace | null, after: CaretPlace): Ca
   return { bell, wrapped: false, travel };
 }
 
-const COPIED_STYLES = [
-  'direction',
-  'fontFamily',
-  'fontSize',
-  'fontStyle',
-  'fontVariant',
-  'fontWeight',
-  'letterSpacing',
-  'lineHeight',
-  'paddingBottom',
-  'paddingLeft',
-  'paddingRight',
-  'paddingTop',
-  'tabSize',
-  'textIndent',
-  'textTransform',
-  'wordSpacing',
-] as const;
-
 const PROBE = 'nnnnnnnnnn';
+const FONT_STYLES = ['fontFamily', 'fontSize', 'fontStyle', 'fontVariant', 'fontWeight', 'letterSpacing', 'textTransform', 'wordSpacing'] as const;
 
-let mirror: { box: HTMLDivElement; marker: HTMLSpanElement; probe: HTMLSpanElement } | null = null;
+let probe: HTMLSpanElement | null = null;
 
-function getMirror() {
-  if (mirror) return mirror;
-  const box = document.createElement('div');
-  box.setAttribute('aria-hidden', 'true');
-  // Fixed and invisible: it is laid out, but never seen and never scrolls the page.
-  Object.assign(box.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    visibility: 'hidden',
-    pointerEvents: 'none',
-    boxSizing: 'border-box',
-    border: '0',
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'break-word',
-  });
-  const marker = document.createElement('span');
-  marker.textContent = '​';
-  const probe = document.createElement('span');
-  probe.textContent = PROBE;
-  Object.assign(probe.style, { position: 'absolute', top: '0', left: '0', whiteSpace: 'pre' });
-  document.body.append(box);
-  mirror = { box, marker, probe };
-  return mirror;
+/** Width of an average character in the element's font. */
+function averageCharWidth(style: CSSStyleDeclaration): number {
+  if (!probe) {
+    probe = document.createElement('span');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.textContent = PROBE;
+    // Fixed and invisible: it is laid out, but never seen and never scrolls the page.
+    Object.assign(probe.style, { position: 'fixed', top: '0', left: '0', visibility: 'hidden', pointerEvents: 'none', whiteSpace: 'pre' });
+    document.body.append(probe);
+  }
+  for (const property of FONT_STYLES) probe.style[property] = style[property];
+  return probe.offsetWidth / PROBE.length;
+}
+
+/** The part of an editor that the measurement needs. ProseMirror's view provides it. */
+export interface CaretSource {
+  state: { selection: { head: number; $head: { depth: number; before: (depth: number) => number } } };
+  coordsAtPos: (pos: number) => { left: number; top: number };
+  nodeDOM: (pos: number) => Node | null;
 }
 
 /**
- * Finds the caret in a textarea by laying out its current paragraph in a
- * hidden copy. Returns null where there is no layout (tests, hidden fields).
+ * Finds the caret inside its text block (paragraph, heading, list line) from
+ * the editor's own layout. Returns null where there is no layout (tests) or
+ * no text block (a selected divider).
  */
-export function measureCaret(field: HTMLTextAreaElement): CaretPlace | null {
-  if (field.clientWidth === 0) return null;
-  const { box, marker, probe } = getMirror();
-  const style = getComputedStyle(field);
-  for (const property of COPIED_STYLES) box.style[property] = style[property];
-  box.style.width = `${field.clientWidth}px`;
-
-  const caret = field.selectionStart ?? field.value.length;
-  const start = field.value.lastIndexOf('\n', caret - 1) + 1;
-  const nextBreak = field.value.indexOf('\n', caret);
-  const end = nextBreak === -1 ? field.value.length : nextBreak;
-  box.replaceChildren(field.value.slice(start, caret), marker, field.value.slice(caret, end), probe);
-
-  const paddingLeft = parseFloat(style.paddingLeft) || 0;
-  const paddingRight = parseFloat(style.paddingRight) || 0;
-  const paddingTop = parseFloat(style.paddingTop) || 0;
-  const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 16) * 1.2;
-  const width = field.clientWidth - paddingLeft - paddingRight;
-  const fromLeft = marker.offsetLeft - paddingLeft;
-  return {
-    line: Math.max(0, Math.round((marker.offsetTop - paddingTop) / lineHeight)),
-    x: style.direction === 'rtl' ? width - fromLeft : fromLeft,
-    width,
-    charWidth: probe.offsetWidth / PROBE.length,
-  };
+export function measureCaret(view: CaretSource): CaretPlace | null {
+  try {
+    const { head, $head } = view.state.selection;
+    if ($head.depth === 0) return null;
+    const block = view.nodeDOM($head.before($head.depth));
+    if (!(block instanceof HTMLElement) || block.clientWidth === 0) return null;
+    const style = getComputedStyle(block);
+    const box = block.getBoundingClientRect();
+    const caret = view.coordsAtPos(head);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 16) * 1.2;
+    const width = block.clientWidth - paddingLeft - paddingRight;
+    const fromLeft = caret.left - box.left - paddingLeft;
+    return {
+      line: Math.max(0, Math.round((caret.top - box.top - paddingTop) / lineHeight)),
+      x: style.direction === 'rtl' ? width - fromLeft : fromLeft,
+      width,
+      charWidth: averageCharWidth(style),
+    };
+  } catch {
+    // A position that cannot be measured must never interrupt writing.
+    return null;
+  }
 }

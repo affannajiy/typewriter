@@ -51,6 +51,28 @@ export function SettingsScreen() {
     <div className="mx-auto max-w-3xl">
       <PageHeader title={t.settings.title} description={t.settings.description} />
       <AppearanceSection settings={settings} set={set} />
+      <Section title={t.settings.writing.title}>
+        <Card>
+          <Row label={t.settings.writing.pageSize} hint={t.settings.writing.hint}>
+            <Segmented
+              legend={t.settings.writing.pageSize}
+              name="page-size"
+              value={settings.pageSize}
+              options={(['a4', 'letter', 'a5'] as const).map((value) => ({ value, label: t.settings.writing.sizes[value] }))}
+              onChange={(value) => set('pageSize', value)}
+            />
+          </Row>
+          <Row label={t.settings.writing.margin}>
+            <Segmented
+              legend={t.settings.writing.margin}
+              name="page-margin"
+              value={settings.pageMargin}
+              options={(['narrow', 'normal', 'wide'] as const).map((value) => ({ value, label: t.settings.writing.margins[value] }))}
+              onChange={(value) => set('pageMargin', value)}
+            />
+          </Row>
+        </Card>
+      </Section>
       <SoundSection settings={settings} set={set} />
       <StorageSection settings={settings} />
       <Section title={t.settings.privacy.title}>
@@ -77,6 +99,8 @@ function AppearanceSection({ settings, set }: { settings: AppSettings; set: <K e
   const [background, setBackground] = useState('#ffffff');
   useEffect(() => {
     const value = getComputedStyle(document.documentElement).getPropertyValue('--tn-bg').trim();
+    // The theme lives in the stylesheet, outside React: this reads it back after a change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isHexColour(value)) setBackground(value);
   }, [settings.theme]);
   const weakAccent = settings.accent !== null && contrast(settings.accent, background) < 3;
@@ -142,7 +166,12 @@ function AppearanceSection({ settings, set }: { settings: AppSettings; set: <K e
 function SoundSection({ settings, set }: { settings: AppSettings; set: <K extends SettingKey>(key: K, value: AppSettings[K]) => void }) {
   // The slider moves at once; the database write follows.
   const [volume, setVolume] = useState(settings.soundVolume);
-  useEffect(() => setVolume(settings.soundVolume), [settings.soundVolume]);
+  // When the stored value changes (the write landed, or another tab changed it), the slider follows.
+  const [stored, setStored] = useState(settings.soundVolume);
+  if (stored !== settings.soundVolume) {
+    setStored(settings.soundVolume);
+    setVolume(settings.soundVolume);
+  }
 
   /** "Dear Sir": a capital, a word, a space, a word, the bell where the setting puts it, the carriage return. */
   const sample = () => {

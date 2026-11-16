@@ -1,12 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Pin, Star, Trash2, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Files, Pin, ScrollText, Star, Trash2, TriangleAlert, Volume2, VolumeX } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Button, IconButton, cx } from '@/components/ui/Button';
-import { Breadcrumbs, type Crumb, LoadingBlock } from '@/components/ui/Layout';
-import { getPage, markPageOpened, savePageDraft, setPageFlags, setPageTags } from '@/database/repositories/pages';
+import { Breadcrumbs, type Crumb, LoadingBlock, Segmented } from '@/components/ui/Layout';
+import { docToPlainText, getPage, markPageOpened, savePageDraft, setPageFlags, setPageLayout, setPageTags } from '@/database/repositories/pages';
 import { writeSetting } from '@/database/repositories/settings';
 import { restoreBatch } from '@/database/repositories/trash';
+import { RichEditor } from '@/features/editor/RichEditor';
+import { isReadableDoc } from '@/features/editor/extensions';
 import { ItemMenu } from '@/features/organisation/ItemMenu';
 import { TagPicker } from '@/features/organisation/TagPicker';
 import { folderPath, folderTrail, notebookPath } from '@/features/organisation/items';
@@ -14,13 +16,13 @@ import { useGuarded } from '@/features/organisation/useItemActions';
 import { type Workspace, useSettings, useWorkspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 import { type Autosaver, type SaveStatus, createAutosaver } from '@/services/autosave';
-import type { Page } from '@/types/models';
+import type { DocNode, Page, PageLayout } from '@/types/models';
 import { NotFound } from './NotFound';
 import { SaveIndicator } from './SaveIndicator';
-import { countCharacters, countWords, docToText, textToDoc } from './plainDoc';
+import { countCharacters, countWords } from './plainDoc';
 import { useTypewriter } from './useTypewriter';
 
-export function PageScreen() {
+export default function PageScreen() {
   const { pageId = '' } = useParams();
   const workspace = useWorkspace();
   // undefined: still loading. null: no such page.
@@ -55,7 +57,7 @@ const quietFocus = 'focus-visible:outline-1 focus-visible:outline-offset-8 focus
 
 interface Draft {
   title: string;
-  body: string;
+  content: DocNode;
 }
 
 function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
@@ -64,13 +66,18 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
   const settings = useSettings();
   // Local state starts from the stored page once and is then the editing truth:
   // later database updates (our own saves) must not move the cursor.
-  const [draft, setDraft] = useState<Draft>(() => ({ title: page.title, body: docToText(page.content) }));
+  const [draft, setDraft] = useState<Draft>(() => ({ title: page.title, content: page.content }));
   const [status, setStatus] = useState<SaveStatus>({ state: 'idle', savedAt: page.updatedAt, error: null });
+  const [sheets, setSheets] = useState(1);
   const saver = useRef<Autosaver<Draft> | null>(null);
+  const latestDraft = useRef(draft);
   const inTrash = page.deletedAt !== null;
+  // Checked once, against the document as it was stored.
+  const [readable] = useState(() => isReadableDoc(page.content));
+  const locked = inTrash || !readable;
 
   useEffect(() => {
-    const autosaver = createAutosaver<Draft>((value) => savePageDraft(page.id, { title: value.title, content: textToDoc(value.body) }), setStatus);
+    const autosaver = createAutosaver<Draft>((value) => savePageDraft(page.id, value), setStatus);
     saver.current = autosaver;
 
     // Write before the tab is hidden or closed; warn if something is still unsaved.
@@ -101,11 +108,18 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
     };
   }, [page.id]);
 
-  const change = (patch: Partial<Draft>) => {
-    const next = { ...draft, ...patch };
-    setDraft(next);
-    saver.current?.schedule(next);
-  };
+  // The editor calls this from a handler that was set up once, so it reads the draft from a ref.
+  const change = useCallback(
+    (patch: Partial<Draft>) => {
+      if (locked) return;
+      const next = { ...latestDraft.current, ...patch };
+      latestDraft.current = next;
+      setDraft(next);
+      saver.current?.schedule(next);
+    },
+    [locked],
+  );
+  const changeContent = useCallback((content: DocNode) => change({ content }), [change]);
 
   const typewriter = useTypewriter(settings);
 
@@ -115,10 +129,15 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
     void guarded(() => writeSetting('typingSound', next));
   };
 
-  const counts = useMemo(() => ({ words: countWords(draft.body), characters: countCharacters(draft.body) }), [draft.body]);
+  const counts = useMemo(() => {
+    const text = docToPlainText(draft.content);
+    return { words: countWords(text), characters: countCharacters(text) };
+  }, [draft.content]);
+
+  const paginated = page.layout === 'paginated';
 
   return (
-    <article className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-3xl flex-col">
+    <article className={cx('mx-auto flex min-h-[calc(100dvh-10rem)] w-full flex-col', paginated ? 'max-w-[51rem]' : 'max-w-3xl')}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Breadcrumbs items={crumbsFor(page, workspace)} />
         {!inTrash && (
@@ -134,9 +153,14 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
         <div role="status" className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-line-strong bg-sunken px-4 py-3 text-sm text-ink">
           <Trash2 size={18} aria-hidden className="shrink-0" />
           <p className="min-w-0 flex-1">{t.page.inTrash}</p>
-          {page.trashBatchId && (
-            <Button onClick={() => void guarded(() => restoreBatch(page.trashBatchId!))}>{t.trash.restore}</Button>
-          )}
+          {page.trashBatchId && <Button onClick={() => void guarded(() => restoreBatch(page.trashBatchId!))}>{t.trash.restore}</Button>}
+        </div>
+      )}
+
+      {!readable && (
+        <div role="status" className="mb-4 flex items-start gap-3 rounded-lg border border-line-strong bg-sunken px-4 py-3 text-sm text-ink">
+          <TriangleAlert size={18} aria-hidden className="mt-0.5 shrink-0" />
+          <p className="min-w-0 flex-1">{t.page.unreadable}</p>
         </div>
       )}
 
@@ -146,7 +170,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
       <input
         id="page-title"
         value={draft.title}
-        readOnly={inTrash}
+        readOnly={locked}
         maxLength={200}
         placeholder={t.page.titlePlaceholder}
         autoComplete="off"
@@ -165,38 +189,43 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
         </div>
       )}
 
-      <label htmlFor="page-body" className="sr-only">
-        {t.page.bodyLabel}
-      </label>
-      <textarea
-        id="page-body"
-        value={draft.body}
-        readOnly={inTrash}
-        placeholder={t.page.bodyPlaceholder}
-        onKeyDown={typewriter.onKeyDown}
-        onKeyUp={typewriter.onKeyUp}
-        onSelect={typewriter.onSelect}
-        onChange={(e) => {
-          typewriter.onInput(e);
-          change({ body: e.target.value });
-        }}
-        className={cx('min-h-80 w-full flex-1 resize-none bg-transparent py-2 font-serif text-lg leading-[1.7] text-ink placeholder:text-muted/60', quietFocus)}
-      />
+      {readable ? (
+        <RichEditor
+          initial={page.content}
+          editable={!locked}
+          layout={page.layout}
+          pageSize={settings.pageSize}
+          pageMargin={settings.pageMargin}
+          typewriter={typewriter}
+          onChange={changeContent}
+          onPageCount={setSheets}
+        />
+      ) : (
+        // The stored text, exactly as it is. Nothing on this screen can change the page.
+        <pre className="flex-1 py-2 font-serif text-lg leading-[1.7] whitespace-pre-wrap text-ink">{page.plainText}</pre>
+      )}
 
-      <footer className="sticky bottom-16 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line bg-bg py-2 text-xs text-muted md:bottom-0">
+      <footer className="sticky bottom-16 z-10 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line bg-bg py-2 text-xs text-muted md:bottom-0">
         <SaveIndicator status={status} onRetry={() => void saver.current?.flush()} />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <p>
             {t.page.words(counts.words)} · {t.page.characters(counts.characters)}
+            {paginated && readable && ` · ${t.page.sheets(sheets)}`}
           </p>
-          {!inTrash && (
-            <IconButton
-              icon={settings.typingSound ? Volume2 : VolumeX}
-              pressed={settings.typingSound}
-              label={t.sound.toggle}
-              onClick={toggleSound}
+          {!locked && (
+            <Segmented<PageLayout>
+              legend={t.page.layout}
+              name="page-layout"
+              value={page.layout}
+              iconsOnly
+              options={[
+                { value: 'continuous', label: t.page.layoutContinuous, icon: ScrollText },
+                { value: 'paginated', label: t.page.layoutPaginated, icon: Files },
+              ]}
+              onChange={(layout) => void guarded(() => setPageLayout(page.id, layout))}
             />
           )}
+          {!inTrash && <IconButton icon={settings.typingSound ? Volume2 : VolumeX} pressed={settings.typingSound} label={t.sound.toggle} onClick={toggleSound} />}
         </div>
       </footer>
     </article>

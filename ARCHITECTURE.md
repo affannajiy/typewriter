@@ -15,11 +15,14 @@ Versions are the ones installed at kickoff (2026-11-16); `package-lock.json` pin
 | Styling | Tailwind CSS 4 over CSS-variable tokens | MIT |
 | Routing | React Router 8, hash mode | MIT |
 | Database | Dexie 4 on IndexedDB, `dexie-react-hooks` | Apache-2.0 |
+| Editor | Tiptap 3 (ProseMirror): core, React binding, starter kit, list, extensions, suggestion | MIT |
 | Icons | Lucide | ISC |
-| Fonts | Inter, Lora, Cormorant Garamond via Fontsource, bundled | OFL-1.1 |
+| Fonts | Inter, Lora, Cormorant Garamond, JetBrains Mono via Fontsource, bundled | OFL-1.1 |
 | Tests | Vitest 5, React Testing Library, fake-indexeddb, Playwright | MIT / Apache-2.0 |
+| Lint | ESLint 9 with jsx-a11y and react-hooks, parsed by `@babel/eslint-parser` | MIT |
 
-Runtime dependencies: 9 packages. `npm audit` reported 0 vulnerabilities at kickoff.
+Runtime dependencies: 18 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
+project and one version). `npm audit` reports 0 vulnerabilities (2026-11-16).
 
 ## Layers
 
@@ -31,6 +34,8 @@ src/
     navigation/   AppShell: sidebar, top bar, drawer, bottom bar
   features/       One folder per screen or concern
     dashboard/  library/  pages/  tags/  trash/  settings/
+    editor/       Rich text: schema, block IDs, commands, toolbar, slash menu, pagination
+    search/       Global search and the command palette
     organisation/ Shared item rows, menus, dialogs, actions
   hooks/          useData.ts: live queries over repositories
   database/
@@ -60,11 +65,11 @@ Each records the context and the alternatives, so it can be revisited.
 ### D1. One document per page, not one row per block
 
 The page body is a single Tiptap/ProseMirror JSON document in `pages.content`. Blocks get stable IDs
-as node attributes (Milestone 3). `pages.plainText` is derived on every save for search.
+as node attributes (D10). `pages.plainText` is derived on every save for search.
 
 - *Why:* one atomic write per save, no ordering bugs, undo stays inside the editor.
 - *Alternative:* a `blocks` table. Closer to the specification's entity list and friendlier to per-block sync, but every save becomes a multi-row diff.
-- *Consequence:* block links, backlinks and search need a derived index (Milestone 3 and 7).
+- *Consequence:* block links and backlinks need a derived index (Milestone 7). Search does without one for now (D12).
 
 ### D2. Soft delete with trash batches
 
@@ -128,10 +133,55 @@ escapement, rack, stop), not one sample. All voices pass through one bus, a shor
 can be measured without listening.
 
 The margin bell and the wrap need the caret's place on its visual line. `src/services/carriage.ts`
-lays the current paragraph out in a hidden copy of the textarea (`measureCaret`) and decides with a
-pure function (`carriageEvents`). Only the current paragraph is laid out, and only while sounds are
-on, so the cost per key press does not grow with the page. `features/pages/useTypewriter.ts` joins
-the two services to the fields.
+reads it from the editor's own layout (`measureCaret`: the caret's coordinates inside its text block)
+and decides with a pure function (`carriageEvents`). It is measured only while sounds are on.
+`features/pages/useTypewriter.ts` turns an edit into sounds; `features/editor/RichEditor.tsx` tells
+it about each edit. The edit is noted from the `beforeinput` event, or from the key for Enter and
+the delete keys (which the editor often handles itself), and is matched with the editor's next
+change. `input` cannot be used for this: the editor reads the changed text between two listeners of
+that event, so the note would arrive after the change it describes.
+
+### D10. The editor is Tiptap, wrapped in one feature folder
+
+`features/editor/` is the only place that imports Tiptap at run time. The page screen gives it a
+document and gets documents back.
+
+- **One schema list.** `schemaExtensions()` defines the node and mark types. The editor, the
+  readable-document check and the tests all use it.
+- **Unknown content is never dropped.** ProseMirror discards what its schema does not know, and the
+  next autosave would store the loss. `isReadableDoc()` checks a stored document first; if it fails,
+  the page opens read-only and shows the stored plain text.
+- **Block IDs** are a node attribute (D1), added to old documents when they load and kept unique by a
+  small plugin (`blockIds.ts`). Whole-block actions (`blocks.ts`) each start their own undo step.
+- **One command list** (`commands.ts`) feeds the toolbar, the slash menu, the block menu and the
+  command palette, so a command has one name, icon and shortcut everywhere.
+- **Loaded on demand.** The page screen is a lazy route, so Tiptap is not in the first download.
+- *Not used:* Tiptap's link extension (needs an interface first), tables, and its Pro extensions.
+- *Alternative:* Lexical or plain ProseMirror. Tiptap was fixed by PRD decision 3; plain ProseMirror
+  would mean writing the same extensions by hand.
+
+### D11. Pages are a view over one continuous document
+
+In the paginated layout the document is unchanged. A plugin (`pagination.ts`) measures the top-level
+blocks and draws a spacer, as a decoration, before any block that would cross the bottom margin.
+Where the breaks fall is decided by a pure function (`paginate`), tested without a browser.
+
+- *Why:* the stored document, search, word counts and block IDs do not depend on the paper size.
+  Changing the paper never rewrites a page.
+- *Rule that keeps it exact:* blocks have space below them only, never above, so the margins of two
+  blocks never collapse and a block's position without spacers can be computed from its position
+  with them.
+- *Limits:* a block taller than a sheet is not split. Paper size and margins are application
+  settings, not page fields. There is no print style sheet yet.
+
+### D12. Search scans the workspace in memory
+
+`features/search/search.ts` filters the workspace that `useWorkspace()` already holds: names, and
+`plainText` for pages. No index is built or stored, so nothing can fall out of step with the data.
+
+- *Cost:* linear in the amount of text, per key press. The folded (lower-case, accent-free) text of
+  each page is cached per page object. Budget: under 50 ms at 5,000 pages. Not measured yet.
+- *Planned:* the derived index of D1, when block links and backlinks need it (Milestone 7).
 
 ## Security and privacy posture
 
@@ -145,11 +195,12 @@ the two services to the fields.
 
 | Item | Note |
 | --- | --- |
-| No ESLint yet | TypeScript strict mode is the only static check. Add ESLint with jsx-a11y in Milestone 3. |
+| ESLint has no type-aware rules | It parses TypeScript with Babel, because typescript-eslint needs the TypeScript 5/6 compiler API and the project uses TypeScript 7. Move to typescript-eslint when it supports 7. |
 | No service worker | The app needs the network to load. PWA and offline shell are Milestone 8. |
-| Bundle is one 461 kB chunk (144 kB gzip) | No route splitting yet. Budget for Milestone 8: initial JS under 200 kB gzip, heavy modules lazy-loaded. |
+| Initial JS is 483 kB (152 kB gzip); the editor is a second file of 452 kB (145 kB gzip), loaded with the first page | Only the page screen is split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
 | Sidebar is not resizable | It collapses to icons. Resizable panels are deferred. |
 | Tooltips are native `title` | No custom tooltip component yet. Icon-only buttons also carry `aria-label`. |
 | Backup is a single JSON string in memory | Fine for text. Binary attachments (Milestone 6) need a streamed or zipped format. |
-| Two tabs editing the same page | Last write wins. No conflict prompt yet. |
+| Two tabs editing the same page | Last write wins. No conflict prompt yet. An open editor does not show the other tab's changes until reload. |
+| Dialog components and React StrictMode | A dialog that is mounted already open must not close itself from the native `close` event: in development React runs its effect twice. The command palette listens to `cancel` instead. `Dialog` and the drawer are always mounted, so they are not affected. |
 | All font subsets are emitted | Only the needed ones are fetched by the browser, but `dist/` carries all of them. |

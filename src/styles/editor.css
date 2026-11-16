@@ -1,0 +1,193 @@
+/*
+ * The writing surface: how rich text looks inside the editor.
+ *
+ * Blocks carry space below them only, never above. Margins of neighbouring
+ * blocks therefore never collapse into each other, which keeps the page-break
+ * arithmetic of the paginated layout exact (see features/editor/pagination.ts).
+ * Headings get their air from padding instead.
+ */
+
+.tn-editor > .tn-prose {
+  position: relative;
+  flex: 1;
+  min-height: 20rem;
+  padding-block: 0.5rem;
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: 1.7;
+  color: var(--tn-text);
+  overflow-wrap: break-word;
+  outline: none;
+}
+
+/* In the paginated layout the sheet's margins are the padding. */
+[data-layout='paginated'] .tn-editor > .tn-prose {
+  min-height: 0;
+  padding-block: 0;
+}
+
+/* A thin, distant focus mark: a heavy ring around the page would sit in the writer's eye. */
+[data-layout='continuous'] .tn-editor > .tn-prose:focus-visible {
+  outline: 1px solid var(--tn-border-strong);
+  outline-offset: 8px;
+  border-radius: 4px;
+}
+
+.tn-prose > * {
+  margin-block: 0 0.75em;
+}
+
+.tn-prose h1,
+.tn-prose h2,
+.tn-prose h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  padding-top: 0.5em;
+  margin-bottom: 0.4em;
+}
+.tn-prose h1 {
+  font-size: 1.75em;
+}
+.tn-prose h2 {
+  font-size: 1.4em;
+}
+.tn-prose h3 {
+  font-size: 1.15em;
+}
+
+.tn-prose ul,
+.tn-prose ol {
+  padding-inline-start: 1.5em;
+}
+.tn-prose ul {
+  list-style: disc;
+}
+.tn-prose ol {
+  list-style: decimal;
+}
+.tn-prose li > p {
+  margin: 0;
+}
+.tn-prose li > ul,
+.tn-prose li > ol {
+  margin: 0;
+}
+
+/* Checklist: a real checkbox beside each line. */
+.tn-prose ul[data-type='taskList'] {
+  list-style: none;
+  padding-inline-start: 0.125em;
+}
+.tn-prose ul[data-type='taskList'] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6em;
+}
+.tn-prose ul[data-type='taskList'] > li > label {
+  flex: none;
+  display: grid;
+  place-items: center;
+  /* One line of text high, so the box sits on the first line. */
+  height: 1.7em;
+  min-width: 1.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+.tn-prose ul[data-type='taskList'] > li > label > input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--tn-accent);
+  cursor: pointer;
+}
+.tn-prose ul[data-type='taskList'] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+/* A finished item is struck through as well as ticked: not colour alone. */
+.tn-prose ul[data-type='taskList'] > li[data-checked='true'] > div > p {
+  color: var(--tn-text-muted);
+  text-decoration: line-through;
+}
+
+.tn-prose blockquote {
+  border-inline-start: 3px solid var(--tn-decor);
+  padding-inline-start: 1em;
+  color: var(--tn-text-muted);
+  font-style: italic;
+}
+.tn-prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.tn-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--tn-sunken);
+  border: 1px solid var(--tn-border);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+.tn-prose pre {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  background: var(--tn-sunken);
+  border: 1px solid var(--tn-border);
+  border-radius: 8px;
+  padding: 0.75em 1em;
+  white-space: pre-wrap;
+  tab-size: 2;
+}
+.tn-prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.tn-prose hr {
+  border: 0;
+  border-top: 1px solid var(--tn-border-strong);
+  height: 1px;
+  /* Space below only, like every block. The block above supplies the space before the rule. */
+  margin-block: 0 1.5em;
+}
+.tn-prose hr.ProseMirror-selectednode {
+  outline: 2px solid var(--tn-focus);
+  outline-offset: 4px;
+}
+
+.tn-prose s {
+  text-decoration: line-through;
+}
+.tn-prose u {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* Placeholder in an empty page. */
+.tn-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: inline-start;
+  height: 0;
+  pointer-events: none;
+  color: color-mix(in srgb, var(--tn-text-muted) 60%, transparent);
+}
+
+/* Pushes a block to the next sheet. Drawn by the editor, never saved. */
+.tn-page-spacer {
+  margin: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The toolbar sticks under the top bar on narrow screens, at the top on wide ones. */
+.tn-toolbar {
+  top: var(--tn-topbar);
+}
+@media (width >= 48rem) {
+  .tn-toolbar {
+    top: 0;
+  }
+}

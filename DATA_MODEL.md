@@ -43,14 +43,27 @@ Database name: `typenote`. Schema version: **1**. Backup format version: **1**.
 | `notebookId`, `folderId` | id or null | The one canonical location. At most one is set; both null is the top level. |
 | `content` | document node | Tiptap/ProseMirror JSON. Source of truth for the body. |
 | `plainText` | string | Derived from `content` on every save |
-| `layout` | `'continuous'` or `'paginated'` | Only stored for now |
+| `layout` | `'continuous'` or `'paginated'` | Chosen under the page. Changing it is an edit (`rev` + 1) |
 | `tagIds` | id[] | |
 | `favourite`, `pinned` | boolean | |
 | `order` | number | |
 | `lastOpenedAt` | number or null | Updated on open without changing `updatedAt` or `rev` |
 
-Until the editor lands, the body is plain text stored as one `paragraph` node per line. That is
-already a valid Tiptap document, so Milestone 3 needs no migration.
+#### The document (`content`)
+
+Node types: `doc`, `paragraph`, `heading` (`level` 1 to 3), `bulletList`, `orderedList`, `listItem`,
+`taskList`, `taskItem` (`checked`), `blockquote`, `codeBlock`, `horizontalRule`, `hardBreak`, `text`.
+Marks: `bold`, `italic`, `underline`, `strike`, `code`. The list is defined once, in
+`schemaExtensions()` in [`src/features/editor/extensions.ts`](src/features/editor/extensions.ts).
+
+Every block node (all of the above except `doc`, `hardBreak` and `text`) has an `id` attribute:
+a UUID that stays with the block through edits, moves, type changes and reloads. A split block keeps
+its ID on the first half; a copy gets a new one. Page breaks of the paginated layout are **not** in
+the document.
+
+Pages written before 0.3.0 hold one `paragraph` per line with no IDs. They load as they are. IDs are
+added in the editor and stored with the next real edit, so opening an old page does not change it.
+A document with a node or mark type outside the list above is shown read-only and is never rewritten.
 
 ### `tags` — index: `id`
 

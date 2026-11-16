@@ -1,5 +1,5 @@
 import { db } from '@/database/db';
-import type { DocNode, Id, Page, PageLocation } from '@/types/models';
+import type { DocNode, Id, Page, PageLayout, PageLocation } from '@/types/models';
 import { RepositoryError, bump, cleanName, found, freshVersion, isLive, notTrashed, now, orderAfter } from './common';
 
 export const EMPTY_DOC: DocNode = { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -10,6 +10,8 @@ export function docToPlainText(doc: DocNode): string {
   const lines: string[] = [];
   const visit = (node: DocNode): string => {
     if (typeof node.text === 'string') return node.text;
+    // A line break inside a block separates words, so it must not vanish.
+    if (node.type === 'hardBreak') return '\n';
     return (node.content ?? []).map(visit).join('');
   };
   const walk = (node: DocNode) => {
@@ -119,6 +121,13 @@ export async function setPageTags(id: Id, tagIds: Id[]): Promise<void> {
   await db.transaction('rw', db.pages, async () => {
     const page = found(await db.pages.get(id), 'Page');
     await patchPages([id], bump(page, { tagIds: [...new Set(tagIds)] }));
+  });
+}
+
+export async function setPageLayout(id: Id, layout: PageLayout): Promise<void> {
+  await db.transaction('rw', db.pages, async () => {
+    const page = found(await db.pages.get(id), 'Page');
+    if (page.layout !== layout) await patchPages([id], bump(page, { layout }));
   });
 }
 

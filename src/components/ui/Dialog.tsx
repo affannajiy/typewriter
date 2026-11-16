@@ -57,6 +57,8 @@ export function Dialog({ open, onClose, title, children, footer, onSubmit }: Dia
   );
 
   return (
+    // The click handler only closes on the backdrop. The keyboard way out is Escape, which <dialog> provides.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <dialog
       ref={ref}
       aria-labelledby={titleId}

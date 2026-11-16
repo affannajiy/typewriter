@@ -117,6 +117,8 @@
   --tn-accent-soft: color-mix(in srgb, var(--tn-accent) 16%, var(--tn-bg));
   --tn-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.06);
   --tn-radius: 0.5rem;
+  /* Height of the top bar on narrow screens. The editor toolbar sticks below it. */
+  --tn-topbar: 3.25rem;
   --tn-motion: 160ms;
 }
 

@@ -1,5 +1,5 @@
 import { DatabaseZap, TriangleAlert } from 'lucide-react';
-import { Component, type ReactNode, useEffect, useState } from 'react';
+import { Component, type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
 import { HashRouter, Route, Routes } from 'react-router';
 import { AppShell } from '@/components/navigation/AppShell';
 import { Button } from '@/components/ui/Button';
@@ -10,13 +10,15 @@ import { DashboardScreen } from '@/features/dashboard/DashboardScreen';
 import { LibraryScreen } from '@/features/library/LibraryScreen';
 import { NotebookScreen } from '@/features/library/NotebookScreen';
 import { NotFound } from '@/features/pages/NotFound';
-import { PageScreen } from '@/features/pages/PageScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { applyAppearance } from '@/features/settings/appearance';
 import { TagsScreen } from '@/features/tags/TagsScreen';
 import { TrashScreen } from '@/features/trash/TrashScreen';
 import { useSettings, useSettingsLoaded } from '@/hooks/useData';
 import { t } from '@/i18n/en';
+
+// The editor is the heaviest part of the app. It loads when a page is first opened.
+const PageScreen = lazy(() => import('@/features/pages/PageScreen'));
 
 const reload = () => window.location.reload();
 
@@ -92,7 +94,14 @@ export function App() {
               <Route path="library" element={<LibraryScreen />} />
               <Route path="library/folder/:folderId" element={<LibraryScreen />} />
               <Route path="notebook/:notebookId" element={<NotebookScreen />} />
-              <Route path="page/:pageId" element={<PageScreen />} />
+              <Route
+                path="page/:pageId"
+                element={
+                  <Suspense fallback={<LoadingBlock />}>
+                    <PageScreen />
+                  </Suspense>
+                }
+              />
               <Route path="tags" element={<TagsScreen />} />
               <Route path="tags/:tagId" element={<TagsScreen />} />
               <Route path="trash" element={<TrashScreen />} />

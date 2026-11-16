@@ -1,16 +1,15 @@
-import { type ChangeEvent, type KeyboardEvent, type SyntheticEvent, useEffect, useRef } from 'react';
+import { type ChangeEvent, type KeyboardEvent, useEffect, useRef } from 'react';
 import type { AppSettings } from '@/features/settings/model';
-import { type CaretPlace, carriageEvents, measureCaret } from '@/services/carriage';
+import { type CaretPlace, carriageEvents } from '@/services/carriage';
 import { type SoundDetail, type SoundKind, isTypewriterSoundReady, playTypewriterSound, soundForInput } from '@/services/typewriterSound';
-
-type Field = HTMLInputElement | HTMLTextAreaElement;
 
 /**
  * Turns what happens in the writing fields into typewriter sounds.
  *
- * Edits come from the browser's input events, so every kind of keyboard works.
- * The caret's place on its visual line stands in for the carriage: when the
- * text wraps, the carriage returns, and the margin bell can ring before that.
+ * Edits are described the way the browser's input events describe them
+ * (`inputType` and `data`), so every kind of keyboard works. The caret's
+ * place on its visual line stands in for the carriage: when the text wraps,
+ * the carriage returns, and the margin bell can ring before that.
  */
 export function useTypewriter(settings: AppSettings) {
   const on = settings.typingSound;
@@ -30,37 +29,45 @@ export function useTypewriter(settings: AppSettings) {
     play('return', { travel, bell: settings.soundBell === 'return' });
   };
 
-  const onInput = (event: ChangeEvent<Field>) => {
+  /**
+   * One edit. `caret` is where the caret is after it, or null when the field
+   * has no measurable lines (the title).
+   */
+  const edit = (inputType: string, data: string | null, caret: CaretPlace | null) => {
     if (!on) return;
-    const native = event.nativeEvent as InputEvent;
-    const kind = soundForInput(native.inputType ?? '', native.data ?? null);
+    const kind = soundForInput(inputType, data);
     const before = carriage.current;
-    const after = event.target instanceof HTMLTextAreaElement ? measureCaret(event.target) : null;
-    carriage.current = after;
+    carriage.current = caret;
     if (!kind) return;
 
     if (kind === 'return') {
       returnCarriage(before && before.width > 0 ? before.x / before.width : 0.5);
       return;
     }
-    play(kind, { char: native.data ?? undefined });
-    if (kind === 'backspace' || !after) return;
+    play(kind, { char: data ?? undefined });
+    if (kind === 'backspace' || !caret) return;
 
-    const moved = carriageEvents(before, after);
+    const moved = carriageEvents(before, caret);
     if (moved.wrapped) returnCarriage(moved.travel);
     else if (moved.bell && settings.soundBell === 'margin') play('bell');
   };
 
-  /** The caret moved without an edit (arrow keys, a click): follow it silently. */
-  const onSelect = (event: SyntheticEvent<HTMLTextAreaElement>) => {
-    if (on) carriage.current = measureCaret(event.currentTarget);
+  /** For a plain input element. */
+  const onInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const native = event.nativeEvent as InputEvent;
+    edit(native.inputType ?? '', native.data ?? null, null);
   };
 
-  const onKeyDown = (event: KeyboardEvent<Field>) => {
+  /** The caret moved without an edit (arrow keys, a click): follow it silently. */
+  const follow = (caret: CaretPlace | null) => {
+    if (on) carriage.current = caret;
+  };
+
+  const onKeyDown = (event: Pick<KeyboardEvent, 'key' | 'repeat'>) => {
     if (on && !event.repeat && (event.key === 'Shift' || event.key === 'CapsLock')) play('shiftDown');
   };
 
-  const onKeyUp = (event: KeyboardEvent<Field>) => {
+  const onKeyUp = (event: Pick<KeyboardEvent, 'key'>) => {
     if (on && event.key === 'Shift') play('shiftUp');
   };
 
@@ -70,5 +77,7 @@ export function useTypewriter(settings: AppSettings) {
     play('paper');
   };
 
-  return { onInput, onSelect, onKeyDown, onKeyUp, feedPaper };
+  return { on, edit, onInput, follow, onKeyDown, onKeyUp, feedPaper };
 }
+
+export type Typewriter = ReturnType<typeof useTypewriter>;

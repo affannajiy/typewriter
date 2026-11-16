@@ -3,7 +3,9 @@
 @import '@fontsource-variable/lora';
 @import '@fontsource/cormorant-garamond/500.css';
 @import '@fontsource/cormorant-garamond/600.css';
+@import '@fontsource-variable/jetbrains-mono';
 @import './tokens.css';
+@import './editor.css';
 
 /* Map the semantic tokens to Tailwind names: bg-surface, text-muted, ... */
 @theme inline {
@@ -24,6 +26,7 @@
   --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-serif: 'Lora Variable', Georgia, 'Times New Roman', serif;
   --font-display: 'Cormorant Garamond', 'Lora Variable', Georgia, serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', Consolas, monospace;
   --shadow-soft: var(--tn-shadow);
   --radius-token: var(--tn-radius);
 }

@@ -1,9 +1,11 @@
-import { FilePlus, House, Library, type LucideIcon, Menu as MenuIcon, PanelLeft, Settings, Tag, Trash2, X } from 'lucide-react';
+import { FilePlus, House, Library, type LucideIcon, Menu as MenuIcon, PanelLeft, Search, Settings, Tag, Trash2, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { Button, IconButton, cx } from '@/components/ui/Button';
 import { writeSetting } from '@/database/repositories/settings';
+import { formatShortcut } from '@/features/editor/commands';
 import { useItemActions } from '@/features/organisation/useItemActions';
+import { CommandPalette } from '@/features/search/CommandPalette';
 import { useSettings } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 
@@ -46,13 +48,30 @@ function NavItem({ destination, compact = false }: { destination: Destination; c
   );
 }
 
-function NavList({ compact, onNewPage }: { compact?: boolean; onNewPage: () => void }) {
+function NavList({ compact, onNewPage, onSearch }: { compact?: boolean; onNewPage: () => void; onSearch: () => void }) {
   return (
     <div className="flex h-full flex-col gap-4">
       <Button variant="primary" icon={FilePlus} onClick={onNewPage} className={compact ? 'px-0!' : undefined} aria-label={compact ? t.actions.newPage : undefined} title={compact ? t.actions.newPage : undefined}>
         <span className={compact ? 'sr-only' : undefined}>{t.actions.newPage}</span>
       </Button>
       <ul className="flex flex-col gap-1">
+        <li>
+          <button
+            type="button"
+            onClick={onSearch}
+            aria-haspopup="dialog"
+            title={compact ? t.nav.search : undefined}
+            className={cx('flex min-h-10 w-full items-center gap-3 rounded-md text-sm text-muted hover:bg-accent-soft hover:text-ink pointer-coarse:min-h-11', compact ? 'justify-center px-0' : 'px-3')}
+          >
+            <Search size={18} aria-hidden className="shrink-0" />
+            <span className={compact ? 'sr-only' : 'flex-1 text-start'}>{t.nav.search}</span>
+            {!compact && (
+              <kbd aria-hidden className="rounded border border-line px-1.5 font-sans text-xs">
+                {formatShortcut('Mod+K')}
+              </kbd>
+            )}
+          </button>
+        </li>
         {primary.map((d) => (
           <li key={d.to}>
             <NavItem destination={d} compact={compact} />
@@ -85,6 +104,8 @@ function Drawer({ open, onClose, children }: { open: boolean; onClose: () => voi
   }, [open]);
   if (!open) return null;
   return (
+    // The click handler only closes on the backdrop. The keyboard way out is Escape, which <dialog> provides.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <dialog
       ref={ref}
       aria-label={t.nav.main}
@@ -111,16 +132,31 @@ export function AppShell() {
   const settings = useSettings();
   const { newPage } = useItemActions();
   const location = useLocation();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // The drawer belongs to the screen it was opened on: going anywhere else closes it.
+  const [drawerAt, setDrawerAt] = useState<string | null>(null);
+  const drawerOpen = drawerAt === location.pathname;
+  const setDrawerOpen = (open: boolean) => setDrawerAt(open ? location.pathname : null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const collapsed = settings.sidebarCollapsed;
 
-  // Close the drawer and move focus to the content when the route changes.
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [location.pathname]);
-
   const createPage = () => void newPage();
+  const openSearch = () => {
+    setDrawerOpen(false);
+    setPaletteOpen(true);
+  };
+
+  // Ctrl/Cmd + K opens search and commands from anywhere.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <div className="flex min-h-dvh">
@@ -133,13 +169,14 @@ export function AppShell() {
           <Brand hidden={collapsed} />
           <IconButton icon={PanelLeft} label={collapsed ? t.nav.expandSidebar : t.nav.collapseSidebar} aria-expanded={!collapsed} onClick={() => void writeSetting('sidebarCollapsed', !collapsed)} />
         </div>
-        <NavList compact={collapsed} onNewPage={createPage} />
+        <NavList compact={collapsed} onNewPage={createPage} onSearch={openSearch} />
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-line bg-sunken px-2 py-1 md:hidden">
+        <header className="sticky top-0 z-20 flex h-(--tn-topbar) items-center gap-2 border-b border-line bg-sunken px-2 md:hidden">
           <IconButton icon={MenuIcon} label={t.nav.openMenu} aria-haspopup="dialog" onClick={() => setDrawerOpen(true)} />
           <Brand />
+          <IconButton icon={Search} label={t.nav.search} aria-haspopup="dialog" onClick={openSearch} className="ms-auto" />
         </header>
 
         <main id="main" ref={mainRef} tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-24 outline-none sm:px-6 md:px-10 md:pt-10 md:pb-10">
@@ -169,8 +206,10 @@ export function AppShell() {
       </div>
 
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <NavList onNewPage={createPage} />
+        <NavList onNewPage={createPage} onSearch={openSearch} />
       </Drawer>
+
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
   );
 }

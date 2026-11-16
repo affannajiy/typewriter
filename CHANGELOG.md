@@ -3,6 +3,50 @@
 Versions follow [Semantic Versioning](https://semver.org/). Before 1.0.0, the public contracts are
 the database schema and the backup file format; both carry their own version numbers.
 
+## 0.3.0 — 2026-11-16
+
+Milestone 3 (Writing editor).
+
+### Added
+
+- Rich-text editor (Tiptap 3) in place of the plain text box. Pages written before open as they
+  were: no migration.
+- Formatting: headings 1 to 3, bold, italic, underline, strikethrough, inline code, bulleted,
+  numbered and check lists, quote, code block, divider. From the toolbar, from shortcuts, or by
+  typing (`# `, `- `, `1. `, `[ ] `, `> `).
+- Slash menu: type `/` and a few letters to choose a block type.
+- Block menu: move a block up or down (also Alt + Shift + ↑/↓), duplicate (Ctrl/Cmd + Shift + D),
+  delete with Undo, and turn it into another type.
+- Stable block IDs inside the document, kept through edits, moves and reloads.
+- Search and commands (Ctrl/Cmd + K, or the Search button): find a page by its name or its text,
+  go to a screen, make a page, or run a formatting command.
+- "Sheets of paper" layout, chosen per page: the text is laid out on sheets, and a block that would
+  cross the bottom margin starts the next sheet. Paper size and margins in Settings → Paper.
+- JetBrains Mono for code, bundled.
+- `npm run lint`: ESLint with accessibility (jsx-a11y) and React hooks rules. Also runs in CI.
+- 61 more unit and component tests and 3 more end-to-end journeys (244 unit, 9 journeys).
+
+### Changed
+
+- The editor loads when a page is first opened, in its own file (145 kB gzip). The first screen
+  does not wait for it.
+- A long menu now scrolls inside itself instead of running off the screen.
+- The navigation drawer closes on navigation without an extra render.
+
+### Fixed
+
+- A long notebook name could make the page screen and the dashboard scroll sideways on a phone.
+
+### Security and data safety
+
+- A page that holds content this version cannot show (for example from a newer backup) opens
+  read-only and is left exactly as stored. It is never flattened and saved over.
+
+### Known limits
+
+- No tables or links yet. A block taller than one sheet is not split. Paper settings apply to all
+  pages. See DEVELOPMENT_ROADMAP.md, Milestone 3, for the full list.
+
 ## 0.2.1 — 2026-11-16
 
 ### Added

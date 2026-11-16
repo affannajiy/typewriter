@@ -55,10 +55,11 @@ export interface Crumb {
 
 export function Breadcrumbs({ items }: { items: Crumb[] }) {
   return (
-    <nav aria-label={t.nav.breadcrumbs}>
+    // min-w-0: a long name is cut with an ellipsis instead of widening the screen.
+    <nav aria-label={t.nav.breadcrumbs} className="max-w-full min-w-0">
       <ol className="flex flex-wrap items-center gap-1 text-sm text-muted">
         {items.map((item, index) => (
-          <li key={index} className="flex min-w-0 items-center gap-1">
+          <li key={index} className="flex max-w-full min-w-0 items-center gap-1">
             {index > 0 && <ChevronRight size={14} aria-hidden className="shrink-0 rtl:rotate-180" />}
             {item.to ? (
               <Link to={item.to} className="truncate rounded px-1 py-1 underline-offset-2 hover:text-ink hover:underline">

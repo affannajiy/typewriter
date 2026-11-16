@@ -66,7 +66,8 @@ function Flags({ favourite, pinned }: { favourite?: boolean; pinned?: boolean })
 
 function Row({ to, icon, title, meta, flags, menu }: { to: string; icon: ReactNode; title: string; meta: string; flags?: ReactNode; menu?: ReactNode }) {
   return (
-    <li className="flex items-center gap-1 rounded-lg border border-line bg-surface ps-3 pe-1 hover:border-line-strong">
+    // min-w-0: inside a grid, a row must be allowed to be narrower than its longest name.
+    <li className="flex min-w-0 items-center gap-1 rounded-lg border border-line bg-surface ps-3 pe-1 hover:border-line-strong">
       <Link to={to} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded py-2">
         {icon}
         <span className="min-w-0 flex-1">

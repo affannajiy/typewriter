@@ -1,6 +1,6 @@
 # Development Roadmap and Implementation Checklist
 
-**Last updated:** 2026-11-16 · **Version:** 0.2.1
+**Last updated:** 2026-11-16 · **Version:** 0.3.0
 
 Status words: **Not started**, **In progress**, **Implemented** (works, not yet covered by an
 automated test), **Tested** (works and has automated tests), **Blocked**.
@@ -9,8 +9,8 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | --- | --- |
 | 1 Foundation | Done, with the gaps listed below |
 | 2 Database and organisation | Done, with the gaps listed below |
-| 3 Writing editor | Not started |
-| 4 Drawing | Not started |
+| 3 Writing editor | Done, with the gaps listed below |
+| 4 Drawing | Not started (next) |
 | 5 Writing atmosphere | In progress: typewriter sounds done early, at the owner's request |
 | 6 PDF and audio | Not started |
 | 7 Study features | Not started |
@@ -28,8 +28,9 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Interface density, animation toggle, reduced motion | Implemented | Applied through tokens; no visual regression test |
 | Responsive layout: sidebar, drawer, bottom bar | Tested | No-horizontal-scroll test on desktop and a 412 px phone |
 | Routing | Tested | Hash routes, deep link and reload under the base path |
-| Components: Button, IconButton, TextField, TextArea, SearchField, Card, Dialog, ConfirmDialog, Menu, Toast, Breadcrumbs, Segmented control, EmptyState, status indicator | Tested / Implemented | Button, Menu and ConfirmDialog have component tests. SearchField is built but not used yet |
-| Components: Tabs, Tooltip, Context menu, Toolbar, Floating action menu, Content blocks | Not started | Arrive with the editor. Tooltips are native `title` for now |
+| Components: Button, IconButton, TextField, TextArea, SearchField, Card, Dialog, ConfirmDialog, Menu, Toast, Breadcrumbs, Segmented control, EmptyState, status indicator | Tested / Implemented | Button, Menu and ConfirmDialog have component tests. SearchField is built but not used: search lives in the command palette |
+| Components: Toolbar, Content blocks | Tested | Arrived with the editor (Milestone 3) |
+| Components: Tabs, Tooltip, Context menu, Floating action menu | Not started | Tooltips are native `title` for now |
 | Resizable panels | Not started | Sidebar collapses to icons instead |
 | Typography settings (font, size, line height, width) | Not started | Milestone 5 |
 | Fonts bundled locally | Implemented | Inter, Lora, Cormorant Garamond. JetBrains Mono comes with code blocks |
@@ -58,28 +59,46 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Notebook icon and accent colour | Not started | Milestone 5 |
 | Bookshelf and list views | Implemented | |
 | Dashboard customisation, quick capture, study corner, statistics | Not started | Milestones 5 to 8 |
-| Global search | Not started | Planned with Milestone 3, once rich content exists |
+| Global search | Tested | See Milestone 3 |
 | Templates | Not started | Release 1.1 |
-| Markdown export, PDF export | Not started | Need the editor's document model |
+| Markdown export, PDF export | Not started | The editor's document model now exists |
 | Backup reminders | Not started | Last backup date is shown in Settings |
 
 **Acceptance (create, organise, save, close, reopen without loss):** met, proven by the
 end-to-end test "a workspace survives closing and reopening the app".
 
-## Milestone 3 — Writing editor (next)
+## Milestone 3 — Writing editor
 
-Split into deliverables:
+| Item | Status | Note |
+| --- | --- | --- |
+| Tiptap 3 in the page screen | Tested | Replaces the textarea. Pages written before load unchanged, with no migration (unit test) |
+| Opening a page is not an edit | Tested | The editor reports no change on opening, so `updatedAt` and `rev` stay |
+| A page this version cannot show is read-only | Tested (the check) / Implemented (the screen) | Unknown node or mark types are never dropped and saved over. The stored text is shown instead |
+| Formatting: headings 1 to 3, bold, italic, underline, strikethrough, inline code, bulleted, numbered and check lists, quote, code block, divider | Tested | Toolbar, shortcuts, and typed shortcuts such as `- ` and `# ` |
+| Toolbar | Tested | One tab stop, arrow keys inside. Scrolls sideways on a narrow screen |
+| Stable block IDs | Tested | Kept through edits, moves, type changes, undo and reload; a split or a copy gets a new ID |
+| Block menu: move up and down, duplicate, delete, turn into | Tested | Acts on the top-level block that holds the caret. Delete offers Undo |
+| Slash-command menu | Tested | End-to-end and unit. Off inside code |
+| Shortcuts | Tested (bold, move block, undo, Ctrl/Cmd + K) / Implemented (the rest) | The others come from Tiptap and are shown in the toolbar's tooltips and in the palette |
+| Command palette (Ctrl/Cmd + K) | Tested | Search, go to a screen, new page, formatting commands for the open page |
+| Global search over names and page text | Tested | Every word must match; case and accents ignored; name matches first. The Trash is not searched |
+| Continuous and paginated layouts | Tested | Chosen per page, under the page. Stored in `pages.layout` |
+| Paper size (A4, Letter, A5) and margins (narrow, normal, wide) | Tested | In Settings. One choice for all pages |
+| Typewriter sounds in the editor | Tested | Same end-to-end journey as before, now through the editor |
+| ESLint with accessibility rules | Tested | `npm run lint`, also in CI. jsx-a11y and React hooks rules. Clean |
+| JetBrains Mono for code | Implemented | Bundled locally |
 
-1. Tiptap in the page screen, replacing the textarea; documents load without migration.
-2. Formatting: headings, bold, italic, underline, lists, checklist, quote, code, divider.
-3. Stable block IDs; block menu (duplicate, delete, move, convert).
-4. Slash-command menu.
-5. Shortcuts and command palette (Ctrl/Cmd + K).
-6. Continuous and paginated layouts with page size and margins.
-7. Global search over titles and `plainText`.
-8. ESLint with accessibility rules.
+**Gaps, on purpose or still owed:**
 
-Libraries to validate first: Tiptap 3 with React 19, its table and task-list extensions, bundle cost.
+- **Tables and links** are not in the editor. Pasted addresses stay plain text. Both need their own interface.
+- **A block taller than one sheet is not split** in the paginated layout: it runs over the page edge. Page breaks fall between blocks only.
+- **Paper size and margins are one setting for all pages**, not per page. There is no print or PDF output yet, so the sheets are a writing view.
+- On a phone the sheet is scaled to the screen but the text is not, so a sheet holds less text than on paper.
+- The block menu works on top-level blocks (a whole list, not one list item). There is no drag handle.
+- **Custom key bindings** are not built.
+- Search scans the workspace in memory on each key press. Measure with a large workspace before Milestone 8 (see ARCHITECTURE.md, D3 and D12). Matches are not highlighted in the snippet.
+- ESLint reads TypeScript through Babel, so it has no type-aware rules. typescript-eslint does not support TypeScript 7 yet.
+- Not run: input methods (IME), real phone keyboards, Firefox, Safari, screen readers.
 
 ## Milestone 4 — Drawing
 
@@ -100,9 +119,9 @@ drawing block, full-screen canvas, persistence as editable data, PNG export.
 | Sound packs (other machines) | Not started | |
 | Covers, paper styles, focus mode, typography settings, statistics | Not started | |
 
-The sounds are driven by the browser's input events, so they will keep working when Tiptap replaces
-the textarea in Milestone 3. Two things change then: where the handlers are attached, and
-`measureCaret`, which must read the caret from the editor (`coordsAtPos`) instead of a textarea.
+Since Milestone 3 the sounds follow the editor: the edit is taken from the browser's `beforeinput`
+event (or from the key, for Enter and the delete keys), and the caret is measured from the editor
+(`coordsAtPos`).
 
 ## Milestones 5 to 8
 

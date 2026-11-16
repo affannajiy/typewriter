@@ -2,9 +2,11 @@ import { docToPlainText } from '@/database/repositories/pages';
 import type { DocNode } from '@/types/models';
 
 /**
- * Until the rich-text editor arrives (Milestone 3), the page body is edited
- * as plain text. It is still stored as a Tiptap-compatible document, one
- * paragraph per line, so no data migration is needed when the editor lands.
+ * Plain text and the page document.
+ *
+ * Before the rich-text editor (0.3.0), the page body was plain text stored as
+ * one paragraph per line. `textToDoc` builds that shape. Pages in it still
+ * exist and load unchanged, and the tests use it to prove that.
  */
 
 export function textToDoc(text: string): DocNode {

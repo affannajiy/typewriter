@@ -62,6 +62,8 @@ export function Menu({ label, items, icon = Ellipsis, align = 'end' }: MenuProps
   };
 
   return (
+    // Key presses bubble here from the trigger and the items, which are real buttons.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div ref={rootRef} className="relative" onKeyDown={onKeyDown}>
       <div ref={triggerRef}>
         <IconButton icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((v) => !v)} />
@@ -72,7 +74,8 @@ export function Menu({ label, items, icon = Ellipsis, align = 'end' }: MenuProps
           role="menu"
           aria-label={label}
           className={cx(
-            'animate-rise absolute top-full z-30 mt-1 min-w-48 rounded-lg border border-line bg-surface p-1 shadow-soft',
+            // A long menu scrolls inside itself instead of running off the screen.
+            'animate-rise absolute top-full z-30 mt-1 max-h-[min(24rem,55dvh)] min-w-48 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-soft',
             align === 'end' ? 'end-0' : 'start-0',
           )}
         >

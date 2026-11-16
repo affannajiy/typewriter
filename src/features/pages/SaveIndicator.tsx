@@ -26,11 +26,7 @@ function useOnline(): boolean {
  */
 export function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
   const online = useOnline();
-  const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    if (status.state === 'failed') setMessage(describeError(status.error));
-  }, [status]);
+  const message = status.state === 'failed' ? describeError(status.error) : '';
 
   let content;
   if (status.state === 'failed') {

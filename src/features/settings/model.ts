@@ -31,6 +31,9 @@ export interface AppSettings {
    * line. 'margin': a few characters before the line ends, as on a real machine.
    */
   soundBell: 'return' | 'margin' | 'off';
+  /** Paper for the paginated layout. One choice for every page, for now. */
+  pageSize: 'a4' | 'letter' | 'a5';
+  pageMargin: 'narrow' | 'normal' | 'wide';
 }
 
 export type SettingKey = keyof AppSettings;
@@ -47,6 +50,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   typingSound: false,
   soundVolume: 60,
   soundBell: 'return',
+  pageSize: 'a4',
+  pageMargin: 'normal',
 };
 
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as SettingKey[];
@@ -68,6 +73,8 @@ const validators: { [K in SettingKey]: (v: unknown) => v is AppSettings[K] } = {
   typingSound: (v): v is boolean => typeof v === 'boolean',
   soundVolume: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 100,
   soundBell: oneOf(['return', 'margin', 'off']),
+  pageSize: oneOf(['a4', 'letter', 'a5']),
+  pageMargin: oneOf(['narrow', 'normal', 'wide']),
 };
 
 export function isValidSetting<K extends SettingKey>(key: K, value: unknown): value is AppSettings[K] {
