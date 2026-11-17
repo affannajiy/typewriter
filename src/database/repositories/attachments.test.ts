@@ -302,7 +302,7 @@ describe('schema version 4', () => {
     const upgraded = new TypeNoteDB(name);
     await upgraded.open();
     expect(upgraded.verno).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(4);
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(4);
     expect(await upgraded.pages.get('p1')).toMatchObject({ title: 'Kept', plainText: 'Notes' });
     expect(await upgraded.writingDays.get('2026-11-17')).toMatchObject({ words: 12 });
     expect(await upgraded.attachments.count()).toBe(0);

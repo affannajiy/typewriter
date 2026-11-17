@@ -3,6 +3,48 @@
 Versions follow [Semantic Versioning](https://semver.org/). Before 1.0.0, the public contracts are
 the database schema and the backup file format; both carry their own version numbers.
 
+## 0.7.0 — 2026-11-17
+
+Milestone 7 (Study features).
+
+### Added
+
+- Equations, drawn with KaTeX. Type `$x^2$` in a line for an inline equation, or `$$` and a space
+  on an empty line for an equation block; or use `/equation`, the toolbar, the palette, or
+  Ctrl/Cmd + Shift + E. Click an equation (or select it and press Enter) to edit its LaTeX, with a
+  live preview. A formula that cannot be read shows its source and the reason.
+- Links between pages. Type `[[` and a few letters of a title, then choose the page, or create a new
+  one in the same place. A link shows the page's current title; a link to a deleted page is struck
+  through. Enter on a selected link follows it.
+- "Linked from" under every page: the pages that link to it.
+- Graph: every linked page as a point and every link as a line. Each point opens its page, from the
+  mouse or the keyboard; zoom and drag to look around; pages without links on request. The same
+  links are listed as text below.
+- Flashcards, scheduled with FSRS (ts-fsrs). Study: decks with what each has to study today; a deck
+  screen to add, edit, move and delete cards (Undo); a review session with Show answer and Again,
+  Hard, Good, Easy, each showing when the card would come back. Space, 1 to 4 and Z (undo the last
+  answer) work from the keyboard. `$…$` in a card is an equation.
+- "Make a flashcard" on a page: the card starts from the selected text, or the paragraph with the
+  caret, and remembers the page it came from. With no deck yet, the dialog makes one.
+- Settings → Study: new cards per deck per day (default 20) and target recall (default 90 %).
+- The desk shows how many cards are waiting.
+- Study and Graph in the navigation and in the palette (which now also offers Files).
+- 43 more unit and component tests and 2 more end-to-end journeys (405 unit, 15 journeys).
+
+### Changed
+
+- Database schema version 5: tables for decks, flashcards and their review history. Opening the app
+  upgrades the database; nothing existing changes.
+- Backups carry decks, cards and review history. Backups made by earlier versions still restore. A
+  backup made by 0.7.0 is refused by earlier versions, which ask to be updated.
+- Equation source and link titles are part of a page's searchable text and its word count.
+
+### Known limits
+
+- No links to a single block, no tables, no web links. The graph lays out at most 400 pages. Cards are
+  text only, with no images or cloze deletions, and nothing is imported from Anki. See
+  DEVELOPMENT_ROADMAP.md, Milestone 7.
+
 ## 0.6.0 — 2026-11-17
 
 Milestone 6 (PDF and audio).

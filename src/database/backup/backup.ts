@@ -1,6 +1,6 @@
 import { SCHEMA_VERSION, db } from '@/database/db';
 import { newId, now } from '@/database/repositories/common';
-import type { Annotation, Drawing, Folder, Id, Notebook, Page, SafetySnapshot, Tag } from '@/types/models';
+import type { Annotation, Deck, Drawing, Flashcard, Folder, Id, Notebook, Page, SafetySnapshot, Tag } from '@/types/models';
 import { bytesToBase64 } from '@/utils/base64';
 import { BACKUP_FORMAT_VERSION, type BackupData, BackupError, type BackupFile, MAX_BACKUP_BYTES, parseBackup } from './validate';
 
@@ -14,11 +14,11 @@ export { BackupError, parseBackup, type BackupFile } from './validate';
  * snapshot of the old workspace first, so the user can undo it.
  */
 
-const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays, db.attachments, db.attachmentData, db.annotations] as const;
+const allTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays, db.attachments, db.attachmentData, db.annotations, db.decks, db.flashcards, db.reviewLogs] as const;
 const SNAPSHOTS_KEPT = 3;
 
 async function readAll(): Promise<BackupData> {
-  const [folders, notebooks, pages, tags, settings, drawings, writingDays, attachments, attachmentData, annotations] = await Promise.all([
+  const [folders, notebooks, pages, tags, settings, drawings, writingDays, attachments, attachmentData, annotations, decks, flashcards, reviewLogs] = await Promise.all([
     db.folders.toArray(),
     db.notebooks.toArray(),
     db.pages.toArray(),
@@ -29,8 +29,11 @@ async function readAll(): Promise<BackupData> {
     db.attachments.toArray(),
     db.attachmentData.toArray(),
     db.annotations.toArray(),
+    db.decks.toArray(),
+    db.flashcards.toArray(),
+    db.reviewLogs.toArray(),
   ]);
-  return { folders, notebooks, pages, tags, settings, drawings, writingDays, attachments, attachmentData, annotations };
+  return { folders, notebooks, pages, tags, settings, drawings, writingDays, attachments, attachmentData, annotations, decks, flashcards, reviewLogs };
 }
 
 /** A full copy of the workspace, including items in the Trash. */
@@ -62,7 +65,7 @@ export function backupFileName(date = new Date()): string {
 }
 
 export interface BackupSummary {
-  counts: { folders: number; notebooks: number; pages: number; tags: number; files: number };
+  counts: { folders: number; notebooks: number; pages: number; tags: number; files: number; cards: number };
   /** Records in the file whose ID already exists in this workspace. */
   duplicates: number;
   workspaceIsEmpty: boolean;
@@ -74,7 +77,7 @@ export async function analyseBackup(file: BackupFile): Promise<BackupSummary> {
   const { folders, notebooks, pages, tags } = file.data;
   const incoming = [...folders, ...notebooks, ...pages, ...tags];
   return {
-    counts: { folders: folders.length, notebooks: notebooks.length, pages: pages.length, tags: tags.length, files: file.data.attachments.length },
+    counts: { folders: folders.length, notebooks: notebooks.length, pages: pages.length, tags: tags.length, files: file.data.attachments.length, cards: file.data.flashcards.length },
     duplicates: incoming.filter((r) => existing.has(r.id)).length,
     workspaceIsEmpty: existing.size === 0,
   };
@@ -128,6 +131,17 @@ export async function repairReferences(): Promise<number> {
     const kept = n.tagIds.filter((t) => tagIds.has(t));
     if (kept.length !== n.tagIds.length) n.tagIds = kept;
   });
+  // A card whose deck is missing goes to a deck made for it, so no card is lost or hidden.
+  const deckIds = new Set((await db.decks.toArray()).map((d) => d.id));
+  const orphans = (await db.flashcards.toArray()).filter((card) => !deckIds.has(card.deckId)).map((card) => card.id);
+  if (orphans.length > 0) {
+    const time = now();
+    const rescue: Deck = { id: newId(), createdAt: time, updatedAt: time, rev: 1, name: 'Restored cards', description: '', order: deckIds.size + 1 };
+    await db.decks.add(rescue);
+    await db.flashcards.where('id').anyOf(orphans).modify({ deckId: rescue.id });
+    await db.reviewLogs.where('cardId').anyOf(orphans).modify({ deckId: rescue.id });
+    repaired += orphans.length;
+  }
   await db.pages.toCollection().modify((p) => {
     if (p.folderId !== null && !folderIds.has(p.folderId)) {
       p.folderId = null;
@@ -165,6 +179,9 @@ async function replaceAll(data: BackupData): Promise<void> {
   await db.attachments.bulkAdd(data.attachments);
   await db.attachmentData.bulkAdd(data.attachmentData);
   await db.annotations.bulkAdd(data.annotations);
+  await db.decks.bulkAdd(data.decks);
+  await db.flashcards.bulkAdd(data.flashcards);
+  await db.reviewLogs.bulkAdd(data.reviewLogs);
 }
 
 export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promise<RestoreReport> {
@@ -175,7 +192,7 @@ export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promis
     report.snapshotId = await saveSnapshot();
     await db.transaction('rw', allTables(), async () => {
       await replaceAll(data);
-      report.added = data.folders.length + data.notebooks.length + data.pages.length + data.tags.length + data.attachments.length;
+      report.added = data.folders.length + data.notebooks.length + data.pages.length + data.tags.length + data.attachments.length + data.decks.length + data.flashcards.length;
       report.repaired = await repairReferences();
     });
     return report;
@@ -221,6 +238,12 @@ export async function restoreBackup(file: BackupFile, mode: RestoreMode): Promis
     }
     // Highlights are notes on a file: they are merged like content.
     await merge<Annotation>(db.annotations, data.annotations);
+    // Decks and cards are content. Answers are history: added when missing, never replaced.
+    await merge<Deck>(db.decks, data.decks);
+    await merge<Flashcard>(db.flashcards, data.flashcards);
+    for (const log of data.reviewLogs) {
+      if (!(await db.reviewLogs.get(log.id))) await db.reviewLogs.put(log);
+    }
     // Words-written days are history, not content: they are not counted in the report.
     for (const day of data.writingDays) {
       const existing = await db.writingDays.get(day.date);

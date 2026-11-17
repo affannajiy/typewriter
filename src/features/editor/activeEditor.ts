@@ -20,4 +20,7 @@ const subscribe = (listener: () => void) => {
   return () => void listeners.delete(listener);
 };
 
+/** The open page's editor, read once, outside React rendering. */
+export const getActiveEditor = (): Editor | null => active;
+
 export const useActiveEditor = (): Editor | null => useSyncExternalStore(subscribe, () => active);

@@ -62,4 +62,7 @@ These are deliberate and are tracked in the roadmap:
 
 - Notebooks have an **icon** and a cover **finish** (Milestone 5). A separate notebook **accent colour** was not added: the cover colour already marks the notebook.
 - Reordering is by "Move up" / "Move down" and "Move to…". **Drag and drop** is added later; the menu actions stay as its keyboard and single-pointer alternative.
+- Study features (Milestone 7) arrived before Release 1's PWA work, as the roadmap orders them.
+  Links go to whole pages only; block links wait for a need. Flashcards are text with equations, with
+  no images, cloze deletions or Anki import.
 - There is one implicit workspace. A `Workspace` entity is added only if multiple workspaces become a requirement.

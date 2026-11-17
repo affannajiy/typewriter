@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo } from 'react';
 import { type FileUse, getAttachment, listAnnotations, listAttachments, listFileUses, readAttachmentBytes } from '@/database/repositories/attachments';
 import { getDrawing } from '@/database/repositories/drawings';
+import { getDeck, listCards, listDecks, listReviewLogs } from '@/database/repositories/flashcards';
 import { listFolders } from '@/database/repositories/folders';
 import { listNotebooks } from '@/database/repositories/notebooks';
 import { listPages } from '@/database/repositories/pages';
@@ -10,7 +11,7 @@ import { listTags } from '@/database/repositories/tags';
 import { listTrash } from '@/database/repositories/trash';
 import { listWritingDays } from '@/database/repositories/writing';
 import { type AppSettings, resolveSettings } from '@/features/settings/model';
-import type { Annotation, Attachment, Drawing, Folder, Id, Notebook, Page, Tag, WritingDay } from '@/types/models';
+import type { Annotation, Attachment, Deck, Drawing, Flashcard, Folder, Id, Notebook, Page, ReviewLog, Tag, WritingDay } from '@/types/models';
 
 /**
  * Live views of the workspace. Components read data only through these hooks,
@@ -76,6 +77,24 @@ export function useAnnotations(attachmentId: Id): Annotation[] | undefined {
 /** Every day with words written, oldest first. One small row per day. Undefined while loading. */
 export function useWritingDays(): WritingDay[] | undefined {
   return useLiveQuery(() => listWritingDays(''), []);
+}
+
+/** Every deck, in order. Undefined while loading. */
+export const useDecks = (): Deck[] | undefined => useLiveQuery(listDecks, []);
+
+/** One deck. Undefined while loading; null when there is no such deck. */
+export function useDeck(id: Id): Deck | null | undefined {
+  return useLiveQuery(async () => (await getDeck(id)) ?? null, [id]);
+}
+
+/** Every card, or one deck's, oldest first. Undefined while loading. */
+export function useCards(deckId?: Id): Flashcard[] | undefined {
+  return useLiveQuery(() => listCards(deckId), [deckId]);
+}
+
+/** Answers given since `since` (usually the start of today). Undefined while loading. */
+export function useReviewLogs(since: number): ReviewLog[] | undefined {
+  return useLiveQuery(() => listReviewLogs(since), [since]);
 }
 
 export function useSettings(): AppSettings {

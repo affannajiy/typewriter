@@ -11,6 +11,7 @@ import { useItemActions } from '@/features/organisation/useItemActions';
 import { useSettings, useWorkspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 import { dayPart, formatLongDate } from '@/utils/dates';
+import { StudyCorner } from './StudyCorner';
 import { WritingStats } from './WritingStats';
 
 /** The landing screen: a writing desk with what the user was last working on. */
@@ -79,6 +80,7 @@ export function DashboardScreen() {
     <>
       {header(true)}
       <WritingStats pages={pages} goal={settings.dailyGoal} />
+      <StudyCorner />
       {opened.length > 0 && (
         <Section title={t.dashboard.continueWorking}>
           <ul className="grid gap-2 lg:grid-cols-2">

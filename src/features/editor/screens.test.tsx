@@ -184,7 +184,7 @@ describe('search and commands', () => {
   it('lists places to go before anything is typed, and moves with the arrow keys', async () => {
     const { input } = renderPalette();
     const options = screen.getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['New page', 'Go to Home', 'Go to Library', 'Go to Tags', 'Go to Trash', 'Go to Settings']);
+    expect(options.map((option) => option.textContent)).toEqual(['New page', 'Go to Home', 'Go to Library', 'Go to Tags', 'Go to Files', 'Go to Study', 'Go to Graph', 'Go to Trash', 'Go to Settings']);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
     input.focus();
     await userEvent.keyboard('{ArrowDown}{ArrowDown}');

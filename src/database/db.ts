@@ -1,12 +1,12 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Annotation, Attachment, AttachmentData, Drawing, Folder, Notebook, Page, SafetySnapshot, SettingRecord, Tag, WritingDay } from '@/types/models';
+import type { Annotation, Attachment, AttachmentData, Deck, Drawing, Flashcard, Folder, Notebook, Page, ReviewLog, SafetySnapshot, SettingRecord, Tag, WritingDay } from '@/types/models';
 
 /**
  * Current database schema version. Bump it together with a new
  * `this.version(n)` block. Never edit a released version block: add a new
  * one with an `.upgrade()` step so existing data is migrated, not lost.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export class TypeNoteDB extends Dexie {
   folders!: EntityTable<Folder, 'id'>;
@@ -20,6 +20,9 @@ export class TypeNoteDB extends Dexie {
   attachments!: EntityTable<Attachment, 'id'>;
   attachmentData!: EntityTable<AttachmentData, 'id'>;
   annotations!: EntityTable<Annotation, 'id'>;
+  decks!: EntityTable<Deck, 'id'>;
+  flashcards!: EntityTable<Flashcard, 'id'>;
+  reviewLogs!: EntityTable<ReviewLog, 'id'>;
 
   constructor(name = 'typenote') {
     super(name);
@@ -60,6 +63,13 @@ export class TypeNoteDB extends Dexie {
         // Nothing to convert: pages written before 0.6.0 hold no file blocks.
         await tx.table('attachments').count();
       });
+    // 0.7.0: flashcard decks, cards and their review history. New tables only.
+    this.version(5)
+      .stores({ decks: 'id', flashcards: 'id, deckId, due, sourcePageId', reviewLogs: 'id, cardId, deckId, reviewedAt' })
+      .upgrade(async (tx) => {
+        // Nothing to convert: there were no flashcards before 0.7.0.
+        await tx.table('flashcards').count();
+      });
   }
 }
 
@@ -67,4 +77,4 @@ export class TypeNoteDB extends Dexie {
 export const db = new TypeNoteDB();
 
 /** Tables that hold user content, in the order used by backup and restore. */
-export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays, db.attachments, db.attachmentData, db.annotations] as const;
+export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays, db.attachments, db.attachmentData, db.annotations, db.decks, db.flashcards, db.reviewLogs] as const;

@@ -18,15 +18,20 @@ Versions are the ones installed at kickoff (2026-11-16); `package-lock.json` pin
 | Editor | Tiptap 3 (ProseMirror): core, React binding, starter kit, list, extensions, suggestion | MIT |
 | Drawing | perfect-freehand 1.2 (stroke outlines only), our own engine around it (D13) | MIT |
 | PDF | PDF.js (`pdfjs-dist`) 6.5, loaded when a PDF is first opened (D15) | Apache-2.0 |
+| Equations | KaTeX 0.19, loaded with the editor or the study screens (D16) | MIT |
+| Spaced repetition | ts-fsrs 5.4 (FSRS), loaded with the first review (D16) | MIT |
 | Icons | Lucide | ISC |
 | Fonts | Inter, Lora, Cormorant Garamond, JetBrains Mono via Fontsource, bundled | OFL-1.1 |
 | Tests | Vitest 5, React Testing Library, fake-indexeddb, Playwright | MIT / Apache-2.0 |
 | Lint | ESLint 9 with jsx-a11y and react-hooks, parsed by `@babel/eslint-parser` | MIT |
 
-Runtime dependencies: 20 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
-project and one version; perfect-freehand has no dependencies of its own; pdfjs-dist is Mozilla's).
+Runtime dependencies: 22 packages (9 at kickoff; Tiptap is 8 of the new ones, all from one
+project and one version; perfect-freehand has no dependencies of its own; pdfjs-dist is Mozilla's;
+KaTeX's one dependency, commander, is for its command line and never reaches the browser; ts-fsrs
+has none). ts-fsrs 5.4.2 was chosen over 6.0.0: 6.0.0 was three weeks old, a new major version, and
+brings a new dependency.
 pdfjs-dist lists `@napi-rs/canvas` as an optional dependency for Node; npm installs it, the browser
-build never loads it. `npm audit` reports 0 vulnerabilities (2026-11-17).
+build never loads it. `npm audit` reports 0 vulnerabilities (2026-11-17, after adding KaTeX and ts-fsrs).
 
 ## Layers
 
@@ -42,6 +47,9 @@ src/
     drawing/      Drawing engine (geometry), the drawing block, the full-screen editor, PNG export
     dashboard/    The desk, and the words-written summary (stats.ts, WritingStats)
     files/        PDF and recording blocks, the PDF reader, highlight geometry, the Files screen
+    links/        Page links: the node and its "[[" menu, the link index and backlinks
+    graph/        The graph screen and its force layout
+    study/        Decks, cards, the review session, the study queue
     search/       Global search and the command palette
     organisation/ Shared item rows, menus, dialogs, actions
   hooks/          useData.ts: live queries over repositories
@@ -49,7 +57,7 @@ src/
     db.ts         Dexie schema and versions
     repositories/ All reads and writes of user data
     backup/       Backup format, validation, restore
-  services/       autosave, storage facts, PDF.js wrapper (pdf.ts), recorder
+  services/       autosave, storage facts, PDF.js wrapper (pdf.ts), recorder, KaTeX (math.ts), FSRS (scheduler.ts)
   i18n/           en.ts: every interface string
   styles/         tokens.css (themes), index.css (Tailwind mapping)
   types/          models.ts: the data model
@@ -76,7 +84,7 @@ as node attributes (D10). `pages.plainText` is derived on every save for search.
 
 - *Why:* one atomic write per save, no ordering bugs, undo stays inside the editor.
 - *Alternative:* a `blocks` table. Closer to the specification's entity list and friendlier to per-block sync, but every save becomes a multi-row diff.
-- *Consequence:* block links and backlinks need a derived index (Milestone 7). Search does without one for now (D12).
+- *Consequence:* links and backlinks need a derived index. Since 0.7.0 it is computed in memory from the documents (D16); search still scans them (D12).
 
 ### D2. Soft delete with trash batches
 
@@ -195,7 +203,7 @@ Where the breaks fall is decided by a pure function (`paginate`), tested without
 
 - *Cost:* linear in the amount of text, per key press. The folded (lower-case, accent-free) text of
   each page is cached per page object. Budget: under 50 ms at 5,000 pages. Not measured yet.
-- *Planned:* the derived index of D1, when block links and backlinks need it (Milestone 7).
+- *Since 0.7.0:* the link index of D16 is built the same way, in memory, cached per page object.
 
 ### D13. Drawing: our own engine on perfect-freehand
 
@@ -297,6 +305,43 @@ Milestone 6.
   across engines and test tools); a zipped backup (better, needs a dependency; planned); pdf.js's
   full viewer (`web/pdf_viewer`), which brings its own interface and styles, rejected.
 
+### D16. Study: equations, links, graph and flashcards
+
+Milestone 7.
+
+- **Equations are atoms that hold LaTeX.** `mathInline` and `mathBlock` store only the source;
+  KaTeX draws them each time (`services/math.ts`, the only importer, with a small cache). The source is
+  edited in a dialog, so it never mixes with the page's text, and the editor's undo covers the change.
+  KaTeX runs with `trust: false` (no links, classes, styles or ids from the formula), `throwOnError`
+  (an unreadable formula shows its source and the reason, never a half drawing), size and macro
+  limits, and writes MathML for screen readers. Its fonts and styles are files of the app, so the
+  Content Security Policy did not change. The renderer (`MathRender.tsx`) is apart from the editor's
+  node view so flashcards can draw equations without loading Tiptap.
+- **Links name pages by ID** (`pageLink`: `pageId` and the title at the time, as a fallback). Nothing
+  else is stored: `features/links/links.ts` reads the links from documents and caches them per page
+  object, which a save replaces, so the index cannot fall out of step. Backlinks and the graph use
+  the workspace that `useWorkspace()` already holds (D3). The `[[` menu is a second Suggestion plugin
+  with its own key, beside the slash menu.
+- **The graph** is SVG with an ordinary link per page, so it works by keyboard and the browser's own
+  link handling; the same links follow as a list. The layout is our own Fruchterman–Reingold in
+  `graph/layout.ts` (pure, seeded from page IDs, so it is repeatable and tested). No graph library:
+  the candidates (d3-force, cytoscape, sigma) would add more code than the 120 lines here. Cost is
+  pages² per step; the screen keeps the 400 most-linked pages.
+- **Flashcards** are three tables (DATA_MODEL.md). `services/scheduler.ts` is the only importer of
+  ts-fsrs and converts between its `Card` and our `CardMemory`, so the stored format does not depend
+  on the library. Fuzz is on (seeded by the library from the card, so repeatable). An answer writes
+  the card and a log holding the memory from before, in one transaction; Undo puts that back. The
+  study order (`study/queue.ts`) is ours and pure: learning steps first, then due reviews, then new
+  cards within the daily limit, and a learning card up to 20 minutes early when nothing else is left.
+- **Loading.** KaTeX (264 kB) comes with the editor or a study screen; the scheduler (22 kB) with the
+  first review, by a dynamic import made before the database transaction (Dexie ends a transaction
+  that waits on anything else). The first download grew by 8 kB gzipped (the desk's study corner,
+  routes, settings and strings).
+- *Alternatives:* Tiptap's mathematics extension (it renders the same way but edits in place, mixing
+  the source with the page's text); MathJax (larger, and slower to draw many formulas); storing links
+  in a table (every save would have to keep it in step, and a restore could break it); SM-2 (simpler,
+  but FSRS needs fewer reviews for the same recall and is what the specification names).
+
 ## Security and privacy posture
 
 - No network requests after load. No analytics, no third-party scripts, fonts bundled.
@@ -314,7 +359,9 @@ Milestone 6.
 | A drawing whose block was deleted stays until its page is deleted permanently | Needed for undo (D13). Page purge is the only cleanup. |
 | Finding where files are used scans every page's document | On each change in Files, and on file delete and page purge. Fine for thousands of pages; measure with D3. |
 | No service worker | The app needs the network to load. PWA and offline shell are Milestone 8. |
-| Initial JS is 527 kB (165 kB gzip); the editor and drawing are a second file of 494 kB (159 kB gzip), loaded with the first page; the reader is 14 kB, PDF.js 444 kB (134 kB gzip) and its worker 1.3 MB, loaded with the first PDF | The page and file screens are split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
+| Initial JS is 546 kB (173 kB gzip); the editor and drawing are a second file of 506 kB (163 kB gzip), loaded with the first page; KaTeX is 264 kB (79 kB gzip), loaded with the editor or a study screen; the scheduler 22 kB; the reader is 14 kB, PDF.js 444 kB (134 kB gzip) and its worker 1.3 MB, loaded with the first PDF | The page, file, study and graph screens are split out. Budget for Milestone 8: initial JS under 200 kB gzip. |
+| Backlinks and the graph read every page's document | Cached per page object, so only changed pages are read again. Measure with D3 |
+| An equation block on ruled paper | At least two lines high; a taller formula pushes the text below off the rules (D14). Inline fractions make their line taller |
 | Sidebar is not resizable | It collapses to icons. Resizable panels are deferred. |
 | Tooltips are native `title` | No custom tooltip component yet. Icon-only buttons also carry `aria-label`. |
 | Backup is a single JSON string in memory, files as base64 | Since 0.6.0 it carries PDFs and recordings: a third larger than the files, and capped at 400 MB (a browser string limit). A zipped, streamed format is the fix before files grow common. A "replace" restore's safety snapshot is a full copy, files included. |

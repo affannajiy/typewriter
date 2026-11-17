@@ -1,7 +1,7 @@
 # Data Model
 
 Source: [`src/types/models.ts`](src/types/models.ts) and [`src/database/db.ts`](src/database/db.ts).
-Database name: `typenote`. Schema version: **4**. Backup format version: **2**.
+Database name: `typenote`. Schema version: **5**. Backup format version: **2**.
 
 ## Common fields
 
@@ -54,11 +54,12 @@ Database name: `typenote`. Schema version: **4**. Backup format version: **2**.
 
 Node types: `doc`, `paragraph`, `heading` (`level` 1 to 3), `bulletList`, `orderedList`, `listItem`,
 `taskList`, `taskItem` (`checked`), `blockquote`, `codeBlock`, `horizontalRule`, `drawing` (`drawingId`),
-`pdf` (`attachmentId`), `audio` (`attachmentId`), `hardBreak`, `text`.
+`pdf` (`attachmentId`), `audio` (`attachmentId`), `mathBlock` (`latex`), `mathInline` (`latex`),
+`pageLink` (`pageId`, `title`), `hardBreak`, `text`.
 Marks: `bold`, `italic`, `underline`, `strike`, `code`. The list is defined once, in
 `schemaExtensions()` in [`src/features/editor/extensions.ts`](src/features/editor/extensions.ts).
 
-Every block node (all of the above except `doc`, `hardBreak` and `text`) has an `id` attribute:
+Every block node (all of the above except `doc`, the inline nodes `mathInline`, `pageLink` and `hardBreak`, and `text`) has an `id` attribute:
 a UUID that stays with the block through edits, moves, type changes and reloads. A split block keeps
 its ID on the first half; a copy gets a new one. Page breaks of the paginated layout are **not** in
 the document.
@@ -70,6 +71,12 @@ A document with a node or mark type outside the list above is shown read-only an
 A `drawing` block holds only `drawingId`, the ID of a row in `drawings`. It adds no text to
 `plainText`. Two blocks never share a drawing: a duplicated or pasted block gets a new ID and a copy
 of the strokes.
+
+An equation (`mathBlock`, `mathInline`, since 0.7.0) holds only its LaTeX source, at most 2,000
+characters; KaTeX draws it when shown. A `pageLink` (since 0.7.0) holds the linked page's ID and the
+title it had when the link was made; the link shows the page's current title, and the stored one only
+when the page no longer exists. Links are not stored anywhere else: backlinks and the graph are read
+from the documents. In `plainText`, an equation adds its source and a link its stored title.
 
 ### `drawings` — index: `id, pageId` (schema version 2)
 
@@ -130,6 +137,47 @@ permanently (purging a Trash batch, or emptying the Trash). Its bytes and highli
 Removing a block keeps the file, so the editor's undo can bring the block back; such a file is listed
 in Files as "Not in any page".
 
+### `decks` — index: `id` (schema version 5)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `id`, `createdAt`, `updatedAt`, `rev` | | As above. No `deletedAt`: deleting a deck is permanent, after a confirmation |
+| `name` | string, 1–200 | Empty becomes "Untitled deck" |
+| `description` | string, 0–1000 | |
+| `order` | number | |
+
+### `flashcards` — index: `id, deckId, due, sourcePageId` (schema version 5)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `id`, `createdAt`, `updatedAt`, `rev` | | As above. A review raises `rev` and sets `updatedAt` |
+| `deckId` | id | Deleted with its deck |
+| `front` | string, 1–5000 | The question. `$…$` marks an equation |
+| `back` | string, 0–5000 | The answer |
+| `sourcePageId` | id or null | The page the card was made from. Not cleared when that page is deleted: the card then says so |
+| `state` | `new`, `learning`, `review` or `relearning` | FSRS's card state |
+| `due` | number, epoch ms | When the card should next be studied. A new card is due when made |
+| `stability` | number ≥ 0 | Days for the chance of recall to fall to 90 %. 0 when new |
+| `difficulty` | number, 0–10 | 1 to 10 once studied; 0 when new |
+| `scheduledDays` | number ≥ 0 | Days from the last review to `due` |
+| `learningSteps` | integer ≥ 0 | Which short (re)learning step the card is on |
+| `reps`, `lapses` | integer ≥ 0 | Answers given; times forgotten after learning |
+| `lastReview` | number or null | |
+
+### `reviewLogs` — index: `id, cardId, deckId, reviewedAt` (schema version 5)
+
+| Field | Type | Note |
+| --- | --- | --- |
+| `id` | id | |
+| `cardId`, `deckId` | id | The card, and its deck (kept in step when the card moves) |
+| `rating` | `again`, `hard`, `good` or `easy` | |
+| `reviewedAt` | number, epoch ms | |
+| `before` | the card's schedule fields above | What the card was before this answer. Undo puts it back |
+
+An answer writes the card and its log in one transaction. Only a card's latest answer can be
+undone; undoing deletes the log. A log is never changed otherwise. New cards answered since local
+midnight count against the day's limit (Settings → Study).
+
 ### `writingDays` — index: `date` (schema version 3)
 
 | Field | Type | Note |
@@ -169,6 +217,9 @@ page ─< drawing             (pageId; the page's document names it by drawingId
 page >─< attachment         (the page's document names it by attachmentId; no field on the file)
 attachment ─ attachmentData (same id)
 attachment ─< annotation    (attachmentId)
+page >─< page               (the document's pageLink nodes name other pages; nothing else stores it)
+deck ─< flashcard ─< reviewLog (deckId, cardId)
+flashcard >─ page           (sourcePageId, optional, may name a deleted page)
 tag >─< notebook, page      (tagIds)
 ```
 
@@ -190,11 +241,16 @@ parent is gone or trashed, the root returns to the top level and the user is tol
   "schemaVersion": 1,
   "exportedAt": "2026-11-16T11:00:00.000Z",
   "data": { "folders": [], "notebooks": [], "pages": [], "tags": [], "settings": [], "drawings": [], "writingDays": [],
-            "attachments": [], "attachmentData": [{ "id": "…", "data": "<base64>" }], "annotations": [] }
+            "attachments": [], "attachmentData": [{ "id": "…", "data": "<base64>" }], "annotations": [],
+            "decks": [], "flashcards": [], "reviewLogs": [] }
 }
 ```
 
-Includes trashed items. `attachments`, `attachmentData` and `annotations` are missing from files made
+Includes trashed items. `decks`, `flashcards` and `reviewLogs` are missing from files made before
+schema version 5 and are read as empty. Every card must be in a deck of the file and every answer
+must belong to a card of the file, in that card's deck; states, ratings and numbers are checked as in
+the tables above. In a merge, decks and cards follow the content rule; an answer is added when its ID
+is missing and never replaced. `attachments`, `attachmentData` and `annotations` are missing from files made
 before format 2 (schema version 4) and are read as empty. Every file must have its bytes and the
 reverse; the decoded size must equal `size`; a PDF's bytes must start like a PDF; the media type must
 fit the kind; a highlight must name a file in the backup and have rectangles inside the page. A file's
@@ -223,6 +279,7 @@ restore report: they are history, not items.
 | 2 | 0.4.0 | New table `drawings: 'id, pageId'` | Nothing to convert: no existing row changes. Tested by opening a version 1 database (`drawings.test.ts`) |
 | 3 | 0.5.0 | New table `writingDays: 'date'`; notebooks gain `icon` | Every notebook without `icon` gets `icon: null`. Tested by opening a version 2 database with a notebook and a drawing (`writing.test.ts`) |
 | 4 | 0.6.0 | New tables `attachments: 'id, kind'`, `attachmentData: 'id'`, `annotations: 'id, attachmentId'` | Nothing to convert. Tested by opening a version 3 database with a page and a words-written day (`attachments.test.ts`) |
+| 5 | 0.7.0 | New tables `decks: 'id'`, `flashcards: 'id, deckId, due, sourcePageId'`, `reviewLogs: 'id, cardId, deckId, reviewedAt'` | Nothing to convert. Tested by opening a version 4 database with a page and a file (`flashcards.test.ts`) |
 
 Never edit a released `this.version(n)` block. Add `this.version(n + 1).stores({...}).upgrade(tx => ...)`,
 bump `SCHEMA_VERSION`, add a migration test with data in the old shape, and extend
@@ -230,4 +287,6 @@ bump `SCHEMA_VERSION`, add a migration test with data in the old shape, and exte
 
 ## Planned entities
 
-Deck, Flashcard, Review Log, Link, Page Snapshot. Each arrives with its milestone, as a new schema version.
+Page Snapshot (version history). It arrives with its milestone, as a new schema version. Deck,
+Flashcard and Review Log arrived in 0.7.0. Links are not an entity: they are read from documents
+(ARCHITECTURE.md, D16).

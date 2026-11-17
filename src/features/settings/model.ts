@@ -48,6 +48,10 @@ export interface AppSettings {
   soundMachine: SoundMachine;
   /** Words to write each day, shown on the dashboard. 0: no goal. */
   dailyGoal: number;
+  /** New flashcards shown per deck each day. 0: only cards already started. */
+  studyNewPerDay: number;
+  /** Desired retention for flashcards, in percent: the chance of recalling a card when it comes due. */
+  studyRetention: number;
 }
 
 export const EDITOR_FONTS = ['serif', 'sans', 'mono'] as const;
@@ -63,6 +67,9 @@ export type PaperStyle = (typeof PAPER_STYLES)[number];
 export const SOUND_MACHINES = ['desk', 'portable', 'office'] as const;
 export type SoundMachine = (typeof SOUND_MACHINES)[number];
 export const MAX_DAILY_GOAL = 20_000;
+export const MAX_NEW_PER_DAY = 999;
+export const RETENTION_CHOICES = [80, 85, 90, 95] as const;
+export const NEW_PER_DAY_CHOICES = [0, 5, 10, 20, 30, 50] as const;
 
 export type SettingKey = keyof AppSettings;
 
@@ -88,6 +95,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   focusDim: true,
   soundMachine: 'desk',
   dailyGoal: 0,
+  studyNewPerDay: 20,
+  studyRetention: 90,
 };
 
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as SettingKey[];
@@ -119,6 +128,8 @@ const validators: { [K in SettingKey]: (v: unknown) => v is AppSettings[K] } = {
   focusDim: (v): v is boolean => typeof v === 'boolean',
   soundMachine: oneOf(SOUND_MACHINES),
   dailyGoal: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MAX_DAILY_GOAL,
+  studyNewPerDay: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MAX_NEW_PER_DAY,
+  studyRetention: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 70 && v <= 97,
 };
 
 export function isValidSetting<K extends SettingKey>(key: K, value: unknown): value is AppSettings[K] {

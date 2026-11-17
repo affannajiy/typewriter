@@ -2,7 +2,8 @@ import { SCHEMA_VERSION } from '@/database/db';
 import { MAX_ATTACHMENT_BYTES, MAX_NOTE_LENGTH, MAX_QUOTE_LENGTH, isAllowedMime, looksLikePdf } from '@/database/repositories/attachments';
 import { MAX_NAME_LENGTH } from '@/database/repositories/common';
 import { SETTING_KEYS, isValidSetting } from '@/features/settings/model';
-import { ATTACHMENT_KINDS, type Annotation, type Attachment, type AttachmentData, COVER_KINDS, HIGHLIGHT_COLOURS, DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag, type WritingDay } from '@/types/models';
+import { MAX_CARD_TEXT, MAX_DECK_DESCRIPTION } from '@/database/repositories/flashcards';
+import { ATTACHMENT_KINDS, type Annotation, CARD_STATES, type CardMemory, type Deck, type Flashcard, RATINGS, type ReviewLog, type Attachment, type AttachmentData, COVER_KINDS, HIGHLIGHT_COLOURS, DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag, type WritingDay } from '@/types/models';
 import { base64ToBytes } from '@/utils/base64';
 import { isHexColour } from '@/utils/colour';
 
@@ -37,6 +38,10 @@ export interface BackupData {
   /** In the file, each entry's bytes are base64 text in `data`. */
   attachmentData: AttachmentData[];
   annotations: Annotation[];
+  /** Missing from files written before schema version 5; read as empty. */
+  decks: Deck[];
+  flashcards: Flashcard[];
+  reviewLogs: ReviewLog[];
 }
 
 export interface BackupFile {
@@ -331,6 +336,79 @@ function checkFiles(files: Attachment[], data: AttachmentData[], annotations: An
   });
 }
 
+function deck(v: unknown, path: string): Deck {
+  const r = obj(v, path);
+  return {
+    ...versioned(r, path),
+    name: str(r.name, `${path}.name`),
+    description: str(r.description, `${path}.description`, MAX_DECK_DESCRIPTION),
+    order: num(r.order, `${path}.order`),
+  };
+}
+
+/** A card's schedule: known state, finite numbers in range, whole counts. */
+function memory(r: Raw, path: string): CardMemory {
+  const whole = (value: unknown, at: string) => {
+    const n = num(value, at);
+    return Number.isInteger(n) && n >= 0 ? n : fail(at);
+  };
+  const within = (value: unknown, at: string, min: number, max = Number.MAX_VALUE) => {
+    const n = num(value, at);
+    return n >= min && n <= max ? n : fail(at);
+  };
+  return {
+    state: oneOf(r.state, CARD_STATES, `${path}.state`),
+    due: num(r.due, `${path}.due`),
+    stability: within(r.stability, `${path}.stability`, 0),
+    difficulty: within(r.difficulty, `${path}.difficulty`, 0, 10),
+    scheduledDays: within(r.scheduledDays, `${path}.scheduledDays`, 0),
+    learningSteps: whole(r.learningSteps, `${path}.learningSteps`),
+    reps: whole(r.reps, `${path}.reps`),
+    lapses: whole(r.lapses, `${path}.lapses`),
+    lastReview: nullableNum(r.lastReview, `${path}.lastReview`),
+  };
+}
+
+function flashcard(v: unknown, path: string): Flashcard {
+  const r = obj(v, path);
+  const front = str(r.front, `${path}.front`, MAX_CARD_TEXT);
+  if (front.trim() === '') fail(`${path}.front`);
+  return {
+    ...versioned(r, path),
+    ...memory(r, path),
+    deckId: id(r.deckId, `${path}.deckId`),
+    front,
+    back: str(r.back, `${path}.back`, MAX_CARD_TEXT),
+    sourcePageId: nullableId(r.sourcePageId, `${path}.sourcePageId`),
+  };
+}
+
+function reviewLog(v: unknown, path: string): ReviewLog {
+  const r = obj(v, path);
+  return {
+    id: id(r.id, `${path}.id`),
+    cardId: id(r.cardId, `${path}.cardId`),
+    deckId: id(r.deckId, `${path}.deckId`),
+    rating: oneOf(r.rating, RATINGS, `${path}.rating`),
+    reviewedAt: num(r.reviewedAt, `${path}.reviewedAt`),
+    before: memory(obj(r.before, `${path}.before`), `${path}.before`),
+  };
+}
+
+/** Every card is in a deck of the file, and every answer belongs to a card of the file, in that card's deck. */
+function checkStudy(decks: Deck[], cards: Flashcard[], logs: ReviewLog[]): void {
+  const deckIds = new Set(decks.map((d) => d.id));
+  const cardDeck = new Map(cards.map((c) => [c.id, c.deckId]));
+  cards.forEach((card, i) => {
+    if (!deckIds.has(card.deckId)) fail(`flashcards[${i}].deckId`);
+  });
+  logs.forEach((log, i) => {
+    const deckId = cardDeck.get(log.cardId);
+    if (deckId === undefined) fail(`reviewLogs[${i}].cardId`);
+    else if (deckId !== log.deckId) fail(`reviewLogs[${i}].deckId`);
+  });
+}
+
 function tag(v: unknown, path: string): Tag {
   const r = obj(v, path);
   return { ...versioned(r, path), name: str(r.name, `${path}.name`, 40), colour: colour(r.colour, `${path}.colour`) };
@@ -397,8 +475,17 @@ export function parseBackup(text: string): BackupFile {
       drawings: d.drawings === undefined ? [] : unique(each('drawings', drawing), 'drawings'),
       writingDays: d.writingDays === undefined ? [] : uniqueDays(each('writingDays', writingDay)),
       ...files(),
+      ...study(),
     },
   };
+
+  function study() {
+    const decks = d.decks === undefined ? [] : unique(each('decks', deck), 'decks');
+    const flashcards = d.flashcards === undefined ? [] : unique(each('flashcards', flashcard), 'flashcards');
+    const reviewLogs = d.reviewLogs === undefined ? [] : unique(each('reviewLogs', reviewLog), 'reviewLogs');
+    checkStudy(decks, flashcards, reviewLogs);
+    return { decks, flashcards, reviewLogs };
+  }
 
   function files() {
     const attachments = d.attachments === undefined ? [] : unique(each('attachments', attachment), 'attachments');

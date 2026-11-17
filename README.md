@@ -2,12 +2,14 @@
 
 Your personal digital writing atelier: a private, local-first notebook that runs in the browser.
 
-**Status:** Milestones 1 to 6 of 8 are complete (foundation, database and organisation, writing editor,
-drawing, writing atmosphere, PDF and audio). Study features are not built yet.
+**Status:** Milestones 1 to 7 of 8 are complete (foundation, database and organisation, writing editor,
+drawing, writing atmosphere, PDF and audio, study features). Polish and deployment are next.
 See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for the exact state of every feature.
 
 ## What works today
 
+- Equations (`$x^2$`, or `$$` on an empty line), drawn with KaTeX. Links between pages with `[[`, a "Linked from" list under each page, and a graph of all the links.
+- Flashcards in decks, scheduled with FSRS: make one from any page, study with Space and 1 to 4, undo the last answer. `$…$` in a card is an equation.
 - PDFs and sound recordings in pages (`/pdf`, `/record`). A PDF reader with zoom, page numbers, highlights in four colours and a note on each highlight. Recording with the microphone, with pause; or a sound file. A Files screen lists every file and where it is used.
 - Folders (nested), notebooks with coloured covers, and pages. A page can live in a notebook, in a folder, or on its own.
 - Rename, move, reorder, favourite and pin. Tags across the whole workspace.
@@ -83,6 +85,9 @@ browser and are never part of the build.
 | Alt + Shift + ↑ / ↓ | Move the current block up or down |
 | Ctrl/Cmd + Shift + D | Duplicate the current block |
 | `/` in the text | Menu of block types |
+| `[[` in the text | Link to a page |
+| `$…$` · `$$` and a space on an empty line · Ctrl/Cmd + Shift + E | Inline equation · equation block · inline equation |
+| Space · 1, 2, 3, 4 · Z (in a study session) | Show the answer · Again, Hard, Good, Easy · undo the last answer |
 | Ctrl/Cmd + Z · Ctrl/Cmd + Shift + Z | Undo · redo |
 | Tab / Shift + Tab | Move between controls |
 | Enter / Space | Activate a control, open a menu |

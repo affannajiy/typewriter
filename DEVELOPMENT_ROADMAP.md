@@ -1,6 +1,6 @@
 # Development Roadmap and Implementation Checklist
 
-**Last updated:** 2026-11-17 · **Version:** 0.6.0
+**Last updated:** 2026-11-17 · **Version:** 0.7.0
 
 Status words: **Not started**, **In progress**, **Implemented** (works, not yet covered by an
 automated test), **Tested** (works and has automated tests), **Blocked**.
@@ -13,8 +13,8 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | 4 Drawing | Done, with the gaps listed below |
 | 5 Writing atmosphere | Done, with the gaps listed below |
 | 6 PDF and audio | Done, with the gaps listed below |
-| 7 Study features | Not started (next) |
-| 8 Polish and deployment | Not started (the deploy workflow exists but has never run) |
+| 7 Study features | Done, with the gaps listed below |
+| 8 Polish and deployment | Not started (next; the deploy workflow exists but has never run) |
 
 ## Milestone 1 — Foundation
 
@@ -59,7 +59,8 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Notebook icon and cover finish | Tested | Milestone 5. A separate notebook accent colour was not added: the cover colour is the notebook's colour |
 | Bookshelf and list views | Implemented | |
 | Writing statistics on the dashboard | Tested | Milestone 5 |
-| Dashboard customisation, quick capture, study corner | Not started | Milestones 6 to 8 |
+| Study corner on the dashboard | Tested | Milestone 7. Cards waiting today, with a way in. End-to-end checks "nothing to study" |
+| Dashboard customisation, quick capture | Not started | Milestone 8 |
 | Global search | Tested | See Milestone 3 |
 | Templates | Not started | Release 1.1 |
 | Markdown export, PDF export | Not started | The editor's document model now exists |
@@ -91,7 +92,7 @@ end-to-end test "a workspace survives closing and reopening the app".
 
 **Gaps, on purpose or still owed:**
 
-- **Tables and links** are not in the editor. Pasted addresses stay plain text. Both need their own interface.
+- **Tables and web links** are not in the editor. Pasted addresses stay plain text. Links between pages arrived in Milestone 7.
 - **A block taller than one sheet is not split** in the paginated layout: it runs over the page edge. Page breaks fall between blocks only.
 - **Paper size and margins are one setting for all pages**, not per page. There is no print or PDF output yet, so the sheets are a writing view.
 - On a phone the sheet is scaled to the screen but the text is not, so a sheet holds less text than on paper.
@@ -210,10 +211,51 @@ event (or from the key, for Enter and the delete keys), and the caret is measure
 - Not tried: Safari or Firefox recording, iOS, a real microphone, large or damaged real-world PDFs,
   right-to-left PDFs, a screen reader in the reader.
 
-## Milestones 7 and 8
+## Milestone 7 — Study features
 
-As in the master specification: KaTeX, flashcards with FSRS, backlinks, graph (7); dashboard polish,
-accessibility pass, PWA and offline, first real deployment (8).
+| Item | Status | Note |
+| --- | --- | --- |
+| Library check: KaTeX, ts-fsrs | Done | KaTeX 0.19.1 and ts-fsrs 5.4.2, both MIT, no browser dependencies, `npm audit` clean. Reasons in ARCHITECTURE.md, D16 |
+| Equations: inline and block, drawn with KaTeX | Tested | `$x^2$` and `$$` typed, `/equation`, toolbar, palette, Ctrl/Cmd + Shift + E. Unit and end-to-end; the end-to-end test checks KaTeX's font loads under the Content Security Policy |
+| Editing an equation's LaTeX in a dialog with a preview | Implemented | Enter saves, an empty formula removes it, Cancel on a new one removes it. The dialog is not covered by an automated test; the insert and the stored result are |
+| An unreadable formula shows its source and the reason | Tested (the renderer) / Implemented (the view) | KaTeX with `trust: false`; unit test that links, raw HTML and styles are not produced |
+| Page links with `[[`, and creating the linked page from the menu | Tested | End-to-end. The new page goes where the linking page is. The link shows the page's current title |
+| Links to deleted pages | Implemented | Struck through, with "no longer exists" or "in the Trash" in the name. Not automated |
+| "Linked from" (backlinks) under each page | Tested | Unit (index) and end-to-end, including after a reload |
+| Graph of pages and links | Tested | End-to-end: counts, named points, a point opens its page. Layout unit-tested (repeatable, inside the square, linked pages closer). Zoom and drag not automated |
+| Graph as a list | Implemented | The same links as text, for screen readers |
+| Schema v5: `decks`, `flashcards`, `reviewLogs`, with migration test | Tested | A version 4 database opens with its pages and files intact |
+| Decks: create, edit, delete with confirmation | Tested (repository) / Implemented (screens) | Delete takes the cards and their history |
+| Cards: add, edit, move to another deck, delete with Undo | Tested (repository) / Implemented (screen) | Editing keeps the schedule |
+| Card from a page ("Make a flashcard") | Tested | End-to-end. From the selection, or the paragraph with the caret; the card links back to its page |
+| Equations in cards (`$…$`) | Tested | Unit (splitting) and end-to-end (preview in the dialog) |
+| FSRS scheduling (ts-fsrs) | Tested | Wrapper unit-tested: steps, graduation, lapses, retention, repeatable. Stored in our own format |
+| Review session: show answer, four answers with their next interval, Undo, keyboard | Tested | Component test and end-to-end. Space, 1 to 4, Z |
+| Study order and the daily limit of new cards | Tested | Pure function, unit-tested |
+| Settings → Study: new cards per day, target recall | Implemented | Validated on read (unit-tested); the screen is not automated |
+| Backups with decks, cards and history | Tested | Round trip, older files, and seven kinds of damage rejected with the place named |
+
+**Gaps, on purpose or still owed:**
+
+- **Links go to whole pages.** No links to a block, no web links, no link preview on hover. A link's
+  stored title goes stale when the page is renamed (only used if the page is gone).
+- **Graph:** at most 400 pages (the most linked); no clusters by notebook or tag, no filter, no
+  saved positions. Dragging and zooming work by pointer and buttons; the keyboard moves between
+  pages, not around the picture.
+- **Cards are text.** No images, audio, cloze deletions, reversed cards, tags on cards, Anki import or
+  export, or statistics beyond the counts. A card made from a page does not change when the page does.
+- **FSRS parameters are the library's defaults.** No optimisation from your own review history.
+- **Equations on ruled paper:** a tall formula pushes the text below off the rules (ARCHITECTURE.md,
+  Known limits). Equation source and link titles count as words.
+- A card's source page is not cleared when the page is deleted permanently: the card says the page
+  was deleted.
+- Not run: a screen reader on equations and the graph, Firefox, Safari, phone keyboards with `[[`,
+  a graph with hundreds of pages.
+
+## Milestone 8
+
+As in the master specification: dashboard polish, accessibility pass, PWA and offline, first real
+deployment.
 
 ## Open questions for the owner
 

@@ -128,7 +128,7 @@ test('a backup restores a workspace on a clean browser', async ({ page, browser 
   await fresh.goto(page.url());
   await fresh.getByTestId('restore-file').setInputFiles(backupPath);
   const dialog = fresh.getByRole('dialog', { name: 'Restore backup' });
-  await expect(dialog.getByText('This backup holds 0 folders, 1 notebook, 1 page, 0 tags and 0 files.')).toBeVisible();
+  await expect(dialog.getByText('This backup holds 0 folders, 1 notebook, 1 page, 0 tags, 0 files and 0 flashcards.')).toBeVisible();
   await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(fresh.getByText('Restore complete: 2 added, 0 updated, 0 left unchanged.')).toBeVisible();
 

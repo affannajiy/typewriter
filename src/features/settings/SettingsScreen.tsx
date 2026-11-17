@@ -29,7 +29,7 @@ import { contrast, isHexColour } from '@/utils/colour';
 import { formatDateTime } from '@/utils/dates';
 import { describeError } from '@/utils/errors';
 import { formatShortcut } from '@/features/editor/commands';
-import { type AppSettings, EDITOR_FONTS, EDITOR_LEADINGS, EDITOR_SIZES, EDITOR_WIDTHS, MAX_DAILY_GOAL, PAPER_STYLES, SOUND_MACHINES, type SettingKey, THEME_IDS, type ThemeChoice } from './model';
+import { type AppSettings, EDITOR_FONTS, EDITOR_LEADINGS, EDITOR_SIZES, EDITOR_WIDTHS, MAX_DAILY_GOAL, NEW_PER_DAY_CHOICES, PAPER_STYLES, RETENTION_CHOICES, SOUND_MACHINES, type SettingKey, THEME_IDS, type ThemeChoice } from './model';
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -85,6 +85,7 @@ export function SettingsScreen() {
         </Card>
       </Section>
       <SoundSection settings={settings} set={set} />
+      <StudySection settings={settings} set={set} />
       <StorageSection settings={settings} />
       <Section title={t.settings.privacy.title}>
         <Card className="flex gap-3 px-4 py-3 text-sm text-ink">
@@ -268,6 +269,34 @@ function TextSection({ settings, set }: { settings: AppSettings; set: Setter }) 
               {goalValid ? copy.goalValue(goalNumber) : copy.goalValue(settings.dailyGoal)}
             </output>
           </div>
+        </Row>
+      </Card>
+    </Section>
+  );
+}
+
+function StudySection({ settings, set }: { settings: AppSettings; set: <K extends SettingKey>(key: K, value: AppSettings[K]) => void }) {
+  const copy = t.settings.study;
+  return (
+    <Section title={copy.title}>
+      <Card>
+        <Row label={copy.newPerDay} hint={copy.newPerDayHint}>
+          <Segmented
+            legend={copy.newPerDay}
+            name="study-new-per-day"
+            value={String(settings.studyNewPerDay)}
+            options={NEW_PER_DAY_CHOICES.map((n) => ({ value: String(n), label: String(n) }))}
+            onChange={(value) => set('studyNewPerDay', Number(value))}
+          />
+        </Row>
+        <Row label={copy.retention} hint={copy.retentionHint}>
+          <Segmented
+            legend={copy.retention}
+            name="study-retention"
+            value={String(settings.studyRetention)}
+            options={RETENTION_CHOICES.map((n) => ({ value: String(n), label: copy.retentionValue(n) }))}
+            onChange={(value) => set('studyRetention', Number(value))}
+          />
         </Row>
       </Card>
     </Section>

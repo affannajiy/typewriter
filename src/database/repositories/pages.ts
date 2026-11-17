@@ -14,6 +14,9 @@ export function docToPlainText(doc: DocNode): string {
     if (typeof node.text === 'string') return node.text;
     // A line break inside a block separates words, so it must not vanish.
     if (node.type === 'hardBreak') return '\n';
+    // An equation is searchable by its source; a link by the title it was made with.
+    if (node.type === 'mathInline' || node.type === 'mathBlock') return String(node.attrs?.latex ?? '');
+    if (node.type === 'pageLink') return String(node.attrs?.title ?? '');
     return (node.content ?? []).map(visit).join('');
   };
   const walk = (node: DocNode) => {

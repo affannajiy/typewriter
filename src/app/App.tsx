@@ -22,6 +22,13 @@ import { t } from '@/i18n/en';
 const PageScreen = lazy(() => import('@/features/pages/PageScreen'));
 // The PDF reader brings PDF.js, loaded when a file is first opened.
 const FileScreen = lazy(() => import('@/features/files/FileScreen'));
+// Study brings KaTeX and the scheduler; the graph its layout. Loaded when first visited.
+const StudyScreen = lazy(() => import('@/features/study/StudyScreen'));
+const DeckScreen = lazy(() => import('@/features/study/DeckScreen'));
+const ReviewScreen = lazy(() => import('@/features/study/ReviewScreen'));
+const GraphScreen = lazy(() => import('@/features/graph/GraphScreen'));
+
+const later = (screen: ReactNode) => <Suspense fallback={<LoadingBlock />}>{screen}</Suspense>;
 
 const reload = () => window.location.reload();
 
@@ -114,6 +121,10 @@ export function App() {
                   </Suspense>
                 }
               />
+              <Route path="study" element={later(<StudyScreen />)} />
+              <Route path="study/deck/:deckId" element={later(<DeckScreen />)} />
+              <Route path="study/review/:deckId" element={later(<ReviewScreen />)} />
+              <Route path="graph" element={later(<GraphScreen />)} />
               <Route path="tags" element={<TagsScreen />} />
               <Route path="tags/:tagId" element={<TagsScreen />} />
               <Route path="trash" element={<TrashScreen />} />

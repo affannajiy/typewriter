@@ -1,4 +1,4 @@
-import { BookOpen, FilePlus, FileText, Folder as FolderIcon, House, Library, type LucideIcon, Search, Settings, Tag, Trash2 } from 'lucide-react';
+import { BookOpen, FilePlus, FileText, Folder as FolderIcon, GraduationCap, House, Library, type LucideIcon, Paperclip, Search, Settings, Tag, Trash2, Waypoints } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cx } from '@/components/ui/Button';
@@ -65,6 +65,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       go('home', t.nav.home, House, '/'),
       go('library', t.nav.library, Library, '/library'),
       go('tags', t.nav.tags, Tag, '/tags'),
+      go('files', t.nav.files, Paperclip, '/files'),
+      go('study', t.nav.study, GraduationCap, '/study'),
+      go('graph', t.nav.graph, Waypoints, '/graph'),
       go('trash', t.nav.trash, Trash2, '/trash'),
       go('settings', t.nav.settings, Settings, '/settings'),
     ];

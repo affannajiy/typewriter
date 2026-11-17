@@ -210,3 +210,61 @@ export interface Annotation extends Versioned {
   /** The user's note. Empty when there is none. */
   note: string;
 }
+
+/** A set of flashcards studied together. Since schema version 5. */
+export interface Deck extends Versioned {
+  name: string;
+  description: string;
+  order: number;
+}
+
+/** Where a card is in its learning, as FSRS names it. */
+export const CARD_STATES = ['new', 'learning', 'review', 'relearning'] as const;
+export type CardState = (typeof CARD_STATES)[number];
+
+/** The four answers to a card. */
+export const RATINGS = ['again', 'hard', 'good', 'easy'] as const;
+export type Rating = (typeof RATINGS)[number];
+
+/**
+ * What the scheduler knows about a card (FSRS): when it is due, and the
+ * memory model's stability and difficulty. Times are epoch milliseconds.
+ */
+export interface CardMemory {
+  state: CardState;
+  due: number;
+  /** Days for the chance of recall to fall to 90 %. 0 for a new card. */
+  stability: number;
+  /** 1 (easy) to 10 (hard). 0 for a new card. */
+  difficulty: number;
+  /** Days between the last review and `due`. */
+  scheduledDays: number;
+  /** Which short-term (re)learning step the card is on. */
+  learningSteps: number;
+  reps: number;
+  lapses: number;
+  lastReview: number | null;
+}
+
+/**
+ * A question and its answer. Since schema version 5. Text only; `$…$`
+ * marks an equation. A card can name the page it was made from.
+ */
+export interface Flashcard extends Versioned, CardMemory {
+  deckId: Id;
+  front: string;
+  back: string;
+  /** The page the card was made from, or null. May name a page that was deleted since. */
+  sourcePageId: Id | null;
+}
+
+/** One answer given to a card. Kept so a review can be undone and the day's new cards counted. */
+export interface ReviewLog {
+  id: Id;
+  cardId: Id;
+  deckId: Id;
+  rating: Rating;
+  reviewedAt: number;
+  /** The card's memory before this review. Undoing the review puts it back. */
+  before: CardMemory;
+}

@@ -3,10 +3,15 @@ import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, u
 import { copyDrawing } from '@/database/repositories/drawings';
 import { DrawingBlock } from '@/features/drawing/DrawingBlock';
 import { AudioBlock, PdfBlock } from '@/features/files/FileBlocks';
+import { PageLinkMenu } from '@/features/links/PageLinkMenu';
+import { PageLinkView } from '@/features/links/PageLinkView';
+import type { LinkTarget } from '@/features/links/links';
+import type { LinkMenuState } from '@/features/links/pageLinkNode';
 import type { Typewriter } from '@/features/pages/useTypewriter';
 import { t } from '@/i18n/en';
 import { measureCaret } from '@/services/carriage';
 import type { DocNode, Id, PageLayout } from '@/types/models';
+import { MathView } from './MathView';
 import { SlashMenu } from './SlashMenu';
 import { Toolbar } from './Toolbar';
 import { setActiveEditor } from './activeEditor';
@@ -49,18 +54,24 @@ interface RichEditorProps {
   onOpenDrawing?: (drawingId: Id) => void;
   /** Changes whenever the text's size changes (typeface, size, spacing), so sheets are measured again. */
   textMetrics?: string;
+  /** Pages offered after "[[", for a query. */
+  linkTargets?: (query: string) => LinkTarget[];
+  /** Makes a page to link to, from the "[[" menu. Returns its ID. */
+  onCreateLinkedPage?: (title: string) => Promise<Id>;
 }
 
 /** The writing surface: toolbar, rich text, slash menu, and sheets in the paginated layout. */
-export function RichEditor({ initial, editable, layout, pageSize, pageMargin, typewriter, onChange, onPageCount, pageId, onOpenDrawing, textMetrics }: RichEditorProps) {
+export function RichEditor({ initial, editable, layout, pageSize, pageMargin, typewriter, onChange, onPageCount, pageId, onOpenDrawing, textMetrics, linkTargets, onCreateLinkedPage }: RichEditorProps) {
   const [slash, setSlash] = useState<SlashState | null>(null);
   const [pages, setPages] = useState(1);
   const [available, setAvailable] = useState(0);
   const frame = useRef<HTMLDivElement>(null);
   const slashKeys = useRef<(event: KeyboardEvent) => boolean>(() => false);
+  const [linkMenu, setLinkMenu] = useState<LinkMenuState | null>(null);
+  const linkKeys = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const geometry = useRef<PageGeometry | null>(null);
   const pending = useRef<PendingInput | null>(null);
-  const latest = useLatest({ typewriter, onChange, onOpenDrawing });
+  const latest = useLatest({ typewriter, onChange, onOpenDrawing, linkTargets, onCreateLinkedPage });
 
   /** Remember an edit until the editor reports the change it caused. */
   const expect = (input: PendingInput) => {
@@ -96,6 +107,23 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
         },
       },
       files: { pdf: { view: PdfBlock }, audio: { view: AudioBlock } },
+      study: {
+        math: { view: MathView },
+        links: {
+          view: PageLinkView,
+          findTargets: (query) => latest.current.linkTargets?.(query) ?? [],
+          createPage: (title) => {
+            const create = latest.current.onCreateLinkedPage;
+            return create ? create(title) : Promise.reject(new Error('No page creation here'));
+          },
+          onMenu: setLinkMenu,
+          onMenuKey: (event) => {
+            const used = linkKeys.current(event);
+            if (used) pending.current = null;
+            return used;
+          },
+        },
+      },
     }),
     content: withBlockIds(initial),
     editable,
@@ -202,6 +230,7 @@ export function RichEditor({ initial, editable, layout, pageSize, pageMargin, ty
           <EditorContent editor={editor} className="tn-editor relative flex flex-1 flex-col" style={sheet ? { padding: `${sheet.margin}px ${sheet.margin}px 0` } : undefined} />
         </div>
       </div>
+      {linkMenu && editable && <PageLinkMenu key={linkMenu.items.length} editor={editor} state={linkMenu} keysRef={linkKeys} />}
       {slash && editable && <SlashMenu key={slash.items.map((item) => item.id).join()} editor={editor} state={slash} keysRef={slashKeys} />}
     </div>
   );
