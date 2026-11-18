@@ -1,17 +1,18 @@
 import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react';
-import { BookOpen, CircleAlert, FileText, FolderOpen, Mic, Pause, Play, Square } from 'lucide-react';
+import { BookOpen, CircleAlert, Download, FileText, FolderOpen, Mic, Pause, Play, Square } from 'lucide-react';
 import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { Button, cx } from '@/components/ui/Button';
+import { Button, IconButton, cx } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { MAX_ATTACHMENT_BYTES } from '@/database/repositories/attachments';
 import { useAttachment } from '@/hooks/useData';
 import { t } from '@/i18n/en';
+import { fillFileBlock } from '@/database/repositories/pages';
 import { type ActiveRecording, RecorderError, formatDuration, recordingSupported, startRecording } from '@/services/recorder';
 import { formatBytes } from '@/services/storage';
 import type { Attachment, Id } from '@/types/models';
 import { describeError } from '@/utils/errors';
 import { AudioPlayer } from './AudioPlayer';
-import { NotPdfError, addAudioFile, addPdfFile, saveRecording } from './fileActions';
+import { NotPdfError, addAudioFile, addPdfFile, downloadAttachment, saveRecording } from './fileActions';
 import { type FileNodeOptions, openFileRoute } from './fileNodes';
 
 const idOf = (value: unknown): Id | null => (typeof value === 'string' && value !== '' ? value : null);
@@ -126,8 +127,12 @@ const audioMeta = (attachment: Attachment) => t.files.audioMeta(attachment.durat
 
 type RecorderState = { phase: 'idle' } | { phase: 'recording'; recording: ActiveRecording } | { phase: 'saving' };
 
-/** Records into this block. A recording still running when the block goes is stopped and saved in Files. */
-function Recorder({ onSaved }: { onSaved: (attachment: Attachment) => void }) {
+/**
+ * Records into this block. A recording still running when the block goes
+ * (the page was closed) is stopped, saved, and put into the block in the
+ * stored page by `onSavedAfterLeaving`.
+ */
+function Recorder({ onSaved, onSavedAfterLeaving }: { onSaved: (attachment: Attachment) => void; onSavedAfterLeaving: (attachment: Attachment) => Promise<void> }) {
   const toast = useToast();
   const [state, setState] = useState<RecorderState>({ phase: 'idle' });
   const [, tick] = useState(0);
@@ -140,8 +145,10 @@ function Recorder({ onSaved }: { onSaved: (attachment: Attachment) => void }) {
     if (mounted.current) setState({ phase: 'saving' });
     try {
       const attachment = await saveRecording(await recording.stop());
-      if (reason === 'left' || !mounted.current) toast({ message: t.files.savedAfterLeaving });
-      else {
+      if (reason === 'left' || !mounted.current) {
+        await onSavedAfterLeaving(attachment);
+        toast({ message: t.files.savedAfterLeaving });
+      } else {
         onSaved(attachment);
         toast({ message: reason === 'limit' ? t.files.limitReached : t.files.savedRecording(formatDuration(attachment.durationMs ?? 0)) });
       }
@@ -226,10 +233,11 @@ function Recorder({ onSaved }: { onSaved: (attachment: Attachment) => void }) {
 }
 
 /** A recording in a page: a player, or, while the block is new, a recorder and a file button. */
-export function AudioBlock({ node, editor, selected, updateAttributes }: ReactNodeViewProps) {
+export function AudioBlock({ node, editor, extension, selected, updateAttributes }: ReactNodeViewProps) {
   const attachmentId = idOf(node.attrs.attachmentId);
   const attachment = useAttachment(attachmentId);
   const add = useAddFile(updateAttributes, addAudioFile);
+  const toast = useToast();
 
   if (!attachmentId) {
     return (
@@ -240,7 +248,13 @@ export function AudioBlock({ node, editor, selected, updateAttributes }: ReactNo
         </div>
         {editor.isEditable && (
           <div className="flex flex-wrap items-center gap-2">
-            <Recorder onSaved={(saved) => updateAttributes({ attachmentId: saved.id })} />
+            <Recorder
+              onSaved={(saved) => updateAttributes({ attachmentId: saved.id })}
+              onSavedAfterLeaving={async (saved) => {
+                const { pageId } = extension.options as FileNodeOptions;
+                if (pageId) await fillFileBlock(pageId, idOf(node.attrs.id), 'audio', saved.id);
+              }}
+            />
             <FileButton label={t.files.chooseAudio} icon={FolderOpen} accept="audio/*" busy={add.busy} onFile={add.run} />
           </div>
         )}
@@ -255,7 +269,19 @@ export function AudioBlock({ node, editor, selected, updateAttributes }: ReactNo
         <Missing />
       ) : (
         <>
-          <Heading icon={Mic} name={attachment.name} meta={audioMeta(attachment)} />
+          <div className="flex items-center gap-2">
+            <Heading icon={Mic} name={attachment.name} meta={audioMeta(attachment)} />
+            <IconButton
+              icon={Download}
+              label={t.files.downloadNamed(attachment.name)}
+              onClick={() =>
+                void downloadAttachment(attachment).then(
+                  () => toast({ message: t.files.downloaded(attachment.name) }),
+                  (error: unknown) => toast({ tone: 'error', message: describeError(error) }),
+                )
+              }
+            />
+          </div>
           <AudioPlayer attachment={attachment} />
         </>
       )}

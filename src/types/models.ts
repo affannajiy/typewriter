@@ -22,13 +22,6 @@ export interface Trashable {
   trashBatchId: Id | null;
 }
 
-export interface Folder extends Versioned, Trashable {
-  name: string;
-  /** Parent folder, or null at the top level of the workspace. */
-  parentId: Id | null;
-  order: number;
-}
-
 /** How a cover is finished. `solid` is plain cloth; the others are a pattern pressed into it. */
 export const COVER_KINDS = ['solid', 'linen', 'stripes', 'dots', 'grid'] as const;
 export type CoverKind = (typeof COVER_KINDS)[number];
@@ -45,11 +38,9 @@ export type NotebookIcon = (typeof NOTEBOOK_ICONS)[number];
 export interface Notebook extends Versioned, Trashable {
   name: string;
   description: string;
-  folderId: Id | null;
   cover: NotebookCover;
   /** Since schema version 3. Null: no icon. */
   icon: NotebookIcon | null;
-  tagIds: Id[];
   favourite: boolean;
   order: number;
 }
@@ -67,38 +58,17 @@ export type PageLayout = 'continuous' | 'paginated';
 
 export interface Page extends Versioned, Trashable {
   title: string;
-  /**
-   * Canonical location: a notebook, a folder, or the top level (both null).
-   * At most one of the two is set.
-   */
+  /** The notebook that holds the page, or null for a loose page. */
   notebookId: Id | null;
-  folderId: Id | null;
   /** Source of truth for the page body. */
   content: DocNode;
   /** Derived from `content` on every save. Used for search and previews. */
   plainText: string;
   layout: PageLayout;
-  tagIds: Id[];
   favourite: boolean;
   pinned: boolean;
   order: number;
   lastOpenedAt: number | null;
-}
-
-export interface Tag extends Versioned {
-  name: string;
-  colour: string;
-}
-
-/**
- * Words written on one calendar day, on this device. Since schema version 3.
- * A save that makes a page longer adds the difference; deleting never subtracts.
- */
-export interface WritingDay {
-  /** Local calendar day, `YYYY-MM-DD`. The key. */
-  date: string;
-  words: number;
-  updatedAt: number;
 }
 
 export interface SettingRecord {
@@ -114,17 +84,16 @@ export interface SafetySnapshot {
   payload: string;
 }
 
-export type ItemKind = 'folder' | 'notebook' | 'page';
+export type ItemKind = 'notebook' | 'page';
 
 export interface ItemRef {
   kind: ItemKind;
   id: Id;
 }
 
-/** Where a page can live. Both null means the top level. */
+/** Where a page can live. Null: a loose page, outside every notebook. */
 export interface PageLocation {
   notebookId: Id | null;
-  folderId: Id | null;
 }
 
 /** Ink colours are names, not values: each theme shows them in a shade that reads on its paper. */
@@ -211,60 +180,14 @@ export interface Annotation extends Versioned {
   note: string;
 }
 
-/** A set of flashcards studied together. Since schema version 5. */
-export interface Deck extends Versioned {
-  name: string;
-  description: string;
-  order: number;
-}
-
-/** Where a card is in its learning, as FSRS names it. */
-export const CARD_STATES = ['new', 'learning', 'review', 'relearning'] as const;
-export type CardState = (typeof CARD_STATES)[number];
-
-/** The four answers to a card. */
-export const RATINGS = ['again', 'hard', 'good', 'easy'] as const;
-export type Rating = (typeof RATINGS)[number];
-
 /**
- * What the scheduler knows about a card (FSRS): when it is due, and the
- * memory model's stability and difficulty. Times are epoch milliseconds.
+ * The text of a PDF, page by page, read once so search can find words in it.
+ * Since schema version 6. Derived from the file's bytes: it is not in
+ * backups, and is read again when missing. Same ID as the attachment.
  */
-export interface CardMemory {
-  state: CardState;
-  due: number;
-  /** Days for the chance of recall to fall to 90 %. 0 for a new card. */
-  stability: number;
-  /** 1 (easy) to 10 (hard). 0 for a new card. */
-  difficulty: number;
-  /** Days between the last review and `due`. */
-  scheduledDays: number;
-  /** Which short-term (re)learning step the card is on. */
-  learningSteps: number;
-  reps: number;
-  lapses: number;
-  lastReview: number | null;
-}
-
-/**
- * A question and its answer. Since schema version 5. Text only; `$…$`
- * marks an equation. A card can name the page it was made from.
- */
-export interface Flashcard extends Versioned, CardMemory {
-  deckId: Id;
-  front: string;
-  back: string;
-  /** The page the card was made from, or null. May name a page that was deleted since. */
-  sourcePageId: Id | null;
-}
-
-/** One answer given to a card. Kept so a review can be undone and the day's new cards counted. */
-export interface ReviewLog {
+export interface PdfText {
   id: Id;
-  cardId: Id;
-  deckId: Id;
-  rating: Rating;
-  reviewedAt: number;
-  /** The card's memory before this review. Undoing the review puts it back. */
-  before: CardMemory;
+  /** The text of each page, in order. Page 1 is index 0. */
+  pages: string[];
+  extractedAt: number;
 }

@@ -1,0 +1,34 @@
+/*
+ * The typing test. Colours come from the theme tokens only.
+ */
+
+.tn-typing-text {
+  --tn-typing-line: 2.75rem;
+  overflow-wrap: normal;
+}
+
+/* A wrong letter: danger colour, and a wavy line under it, so colour is not the only cue. */
+.tn-typing-wrong {
+  color: var(--tn-danger);
+  text-decoration: underline wavy var(--tn-danger);
+  text-underline-offset: 0.2em;
+}
+
+/* The caret: a bar before the next letter, blinking unless motion is reduced. */
+.tn-typing-caret {
+  box-shadow: inset 2px 0 0 var(--tn-accent);
+  animation: tn-typing-blink 1s steps(1) infinite;
+}
+@keyframes tn-typing-blink {
+  50% {
+    box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tn-typing-caret {
+    animation: none;
+  }
+}
+:root[data-motion='off'] .tn-typing-caret {
+  animation: none;
+}

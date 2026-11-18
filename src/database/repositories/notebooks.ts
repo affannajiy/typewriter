@@ -34,19 +34,17 @@ function checkCover(details: NotebookDetails) {
   return { cover: { kind, colour: checkColour(details.coverColour) }, icon };
 }
 
-export async function createNotebook(input: NotebookDetails & { folderId: Id | null }): Promise<Notebook> {
+export async function createNotebook(input: NotebookDetails): Promise<Notebook> {
   const { cover, icon } = checkCover(input);
   return db.transaction('rw', db.notebooks, async () => {
-    const siblings = (await listNotebooks()).filter((n) => n.folderId === input.folderId);
+    const siblings = await listNotebooks();
     const notebook: Notebook = {
       ...freshVersion(),
       ...notTrashed,
       name: cleanName(input.name, 'Untitled notebook'),
       description: input.description.trim().slice(0, MAX_DESCRIPTION_LENGTH),
-      folderId: input.folderId,
       cover,
       icon,
-      tagIds: [],
       favourite: false,
       order: orderAfter(siblings),
     };
@@ -78,25 +76,5 @@ export async function setNotebookFavourite(id: Id, favourite: boolean): Promise<
   await db.transaction('rw', db.notebooks, async () => {
     const notebook = found(await db.notebooks.get(id), 'Notebook');
     await db.notebooks.update(id, bump(notebook, { favourite }));
-  });
-}
-
-export async function setNotebookTags(id: Id, tagIds: Id[]): Promise<void> {
-  await db.transaction('rw', db.notebooks, async () => {
-    const notebook = found(await db.notebooks.get(id), 'Notebook');
-    await db.notebooks.update(id, bump(notebook, { tagIds: [...new Set(tagIds)] }));
-  });
-}
-
-export async function moveNotebook(id: Id, folderId: Id | null): Promise<void> {
-  await db.transaction('rw', db.notebooks, db.folders, async () => {
-    const notebook = found(await db.notebooks.get(id), 'Notebook');
-    if (folderId !== null) {
-      const folder = found(await db.folders.get(folderId), 'Destination folder');
-      if (!isLive(folder)) throw new RepositoryError('invalid-move', 'The destination folder is in the Trash');
-    }
-    if (notebook.folderId === folderId) return;
-    const siblings = (await listNotebooks()).filter((n) => n.folderId === folderId);
-    await db.notebooks.update(id, bump(notebook, { folderId, order: orderAfter(siblings) }));
   });
 }

@@ -1,0 +1,28 @@
+/*
+ * Equations in the page. Colours come from the theme tokens only.
+ */
+
+/* Equations. KaTeX's own sizes, a little smaller inline so a formula disturbs its line less. */
+.tn-math-inline .katex {
+  font-size: 1.08em;
+}
+.tn-math-block .katex-display {
+  margin: 0;
+}
+.tn-math-block .katex {
+  font-size: 1.2em;
+}
+
+/*
+ * On ruled paper an equation block takes whole lines: at least two, more when
+ * the formula is taller. The block's own height cannot be rounded by CSS, so
+ * a formula taller than its lines pushes the text below off the rules (a
+ * known limit, as for cards in a narrow screen).
+ */
+.tn-page:not([data-paper='plain']) .tn-prose .tn-math-block {
+  min-height: calc(var(--tn-line) * 2);
+  margin-top: 0;
+  margin-bottom: var(--tn-line);
+  padding-block: 0;
+  align-items: center;
+}

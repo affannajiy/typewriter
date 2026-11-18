@@ -9,7 +9,8 @@ import { type Page, expect, test } from '@playwright/test';
 // Every test starts in a fresh browser context, so IndexedDB is empty.
 
 async function createNotebook(page: Page, name: string) {
-  await page.getByRole('main').getByRole('button', { name: 'New notebook' }).click();
+  // On an empty shelf the button invites the first notebook.
+  await page.getByRole('main').getByRole('button', { name: /^(New notebook|Create your first notebook)$/ }).click();
   const dialog = page.getByRole('dialog', { name: 'New notebook' });
   await dialog.getByLabel('Name').fill(name);
   await dialog.getByRole('button', { name: 'Create notebook' }).click();
@@ -18,6 +19,12 @@ async function createNotebook(page: Page, name: string) {
 /** The screen's own button, not the one in the sidebar or bottom bar. */
 async function newPageInMain(page: Page) {
   await page.getByRole('main').getByRole('button', { name: 'New page' }).click();
+}
+
+/** A loose page, from the home screen's own button. */
+async function newLoosePage(page: Page) {
+  await page.getByRole('main').getByRole('button', { name: 'New loose page' }).click();
+  await expect(page.getByLabel('Page text')).toBeVisible();
 }
 
 /** Types into the page text. Each string is one paragraph. */
@@ -44,7 +51,7 @@ const noSidewaysScroll = (page: Page) => page.evaluate(() => document.documentEl
 
 test('a workspace survives closing and reopening the app', async ({ page }) => {
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: 'Your desk is clear' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No notebooks yet' })).toBeVisible();
 
   await createNotebook(page, 'Organic Chemistry');
   await expect(page.getByRole('heading', { level: 1, name: 'Organic Chemistry' })).toBeVisible();
@@ -67,7 +74,9 @@ test('a workspace survives closing and reopening the app', async ({ page }) => {
   await expect(second.getByLabel('Page title')).toHaveValue('Alkanes');
   await second.close();
 
+  // The old address of the shelf still leads to it.
   await page.goto('./#/library');
+  await expect(page.getByRole('heading', { level: 1, name: 'Notebooks' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Organic Chemistry' })).toBeVisible();
 });
 
@@ -78,25 +87,25 @@ test('deleting is reversible, and permanent deletion asks first', async ({ page 
   await page.getByLabel('Page title').fill('The Printing Press');
   await expect(page.getByText(/Saved on this device at/)).toBeVisible();
 
-  await page.goto('./#/library');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Actions for History' }).click();
   await page.getByRole('menuitem', { name: 'Move to Trash' }).click();
   await expect(page.getByText('“History” and 1 item inside it moved to the Trash.')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Your library is empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No notebooks yet' })).toBeVisible();
 
   await page.goto('./#/trash');
   await page.getByRole('button', { name: 'Restore' }).click();
   await expect(page.getByRole('heading', { name: 'The Trash is empty' })).toBeVisible();
 
-  await page.goto('./#/library');
+  await page.goto('./');
   await page.getByRole('link', { name: 'History' }).click();
   await expect(page.getByRole('link', { name: /The Printing Press/ })).toBeVisible();
 
   // Permanent deletion: the safe button has focus, and cancelling keeps the item.
   await page.getByRole('button', { name: 'Actions for History' }).click();
   await page.getByRole('menuitem', { name: 'Move to Trash' }).click();
-  // Wait for the move to finish: the first message may still be on screen, so expect two.
-  await expect(page.getByText('“History” and 1 item inside it moved to the Trash.')).toHaveCount(2);
+  // The move is finished when the notebook's screen gives way to the empty shelf.
+  await expect(page.getByRole('heading', { name: 'No notebooks yet' })).toBeVisible();
   await page.goto('./#/trash');
   await page.getByRole('button', { name: 'Delete History permanently' }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete “History” permanently?' });
@@ -120,7 +129,7 @@ test('a backup restores a workspace on a clean browser', async ({ page, browser 
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^typenote-backup-\d{4}-\d{2}-\d{2}\.json$/);
   const backupPath = await file.path();
-  expect(JSON.parse(readFileSync(backupPath, 'utf8'))).toMatchObject({ app: 'typenote', formatVersion: 2 });
+  expect(JSON.parse(readFileSync(backupPath, 'utf8'))).toMatchObject({ app: 'typenote', formatVersion: 3 });
 
   // A new context is a different, empty browser profile.
   const clean = await browser.newContext();
@@ -128,11 +137,11 @@ test('a backup restores a workspace on a clean browser', async ({ page, browser 
   await fresh.goto(page.url());
   await fresh.getByTestId('restore-file').setInputFiles(backupPath);
   const dialog = fresh.getByRole('dialog', { name: 'Restore backup' });
-  await expect(dialog.getByText('This backup holds 0 folders, 1 notebook, 1 page, 0 tags, 0 files and 0 flashcards.')).toBeVisible();
+  await expect(dialog.getByText('This backup holds 1 notebook, 1 page and 0 files.')).toBeVisible();
   await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
   await expect(fresh.getByText('Restore complete: 2 added, 0 updated, 0 left unchanged.')).toBeVisible();
 
-  await fresh.goto(page.url().replace('#/settings', '#/library'));
+  await fresh.goto(page.url().replace('#/settings', '#/'));
   await fresh.getByRole('link', { name: 'Field Notes' }).click();
   await fresh.getByRole('link', { name: /Tide pools/ }).click();
   await expect(fresh.getByLabel('Page text')).toHaveText('Anemones close at low tide.');
@@ -154,7 +163,7 @@ test('the theme applies everywhere and persists', async ({ page }) => {
   await expect.poll(background).toBe('rgb(30, 37, 48)');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'midnight');
-  await page.goto('./#/library');
+  await page.goto('./#/typing');
   await expect.poll(background).toBe('rgb(30, 37, 48)');
 });
 
@@ -167,9 +176,9 @@ test('the layout fits the screen with no horizontal scroll', async ({ page }) =>
   await expect(page.getByText(/Saved on this device at/)).toBeVisible();
   const pageRoute = `./${new URL(page.url()).hash}`;
   const screens: [string, () => Promise<void>][] = [
-    ['./', () => page.getByRole('heading', { name: 'Continue working' }).waitFor()],
-    ['./#/library', () => page.getByRole('heading', { level: 1, name: 'Library' }).waitFor()],
-    ['./#/tags', () => page.getByRole('heading', { level: 1, name: 'Tags' }).waitFor()],
+    ['./', () => page.getByRole('heading', { level: 1, name: 'Notebooks' }).waitFor()],
+    ['./#/?q=pneumono', () => page.getByText(/^1 result, \d+ matches/).waitFor()],
+    ['./#/typing', () => page.getByRole('heading', { level: 1, name: 'Typing test' }).waitFor()],
     ['./#/trash', () => page.getByRole('heading', { level: 1, name: 'Trash' }).waitFor()],
     ['./#/settings', () => page.getByRole('heading', { level: 1, name: 'Settings' }).waitFor()],
     [pageRoute, () => page.getByRole('toolbar', { name: 'Formatting' }).waitFor()],
@@ -218,14 +227,18 @@ test('typewriter sounds play only when turned on, and the choice persists', asyn
   const strikes = async () => (await heard()).strikes;
 
   await page.goto('./');
-  await newPageInMain(page);
+  await newLoosePage(page);
   const body = page.getByLabel('Page text');
   const toggle = page.getByRole('button', { name: 'Typewriter sounds' });
 
-  // Off by default: typing is silent.
+  // On by default: it is a typewriter. Turned off, typing is silent.
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  const silent = await strikes();
   await body.pressSequentially('Quiet');
-  expect(await strikes()).toBe(0);
+  expect(await strikes()).toBe(silent);
+  const base = await heard();
 
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -237,17 +250,17 @@ test('typewriter sounds play only when turned on, and the choice persists', asyn
 
   // Pressing Enter on a short line rings the bell and returns the carriage.
   // (The first slide was the sheet of paper fed in when sounds were turned on.)
-  await expect.poll(heard).toMatchObject({ bells: 1, slides: 2 });
+  await expect.poll(heard).toMatchObject({ bells: base.bells + 1, slides: base.slides + 2 });
 
   // Half a line: keys only. No bell, no carriage return.
   await body.pressSequentially('sphinx of black', { delay: 5 });
-  expect(await heard()).toMatchObject({ bells: 1, slides: 2 });
+  expect(await heard()).toMatchObject({ bells: base.bells + 1, slides: base.slides + 2 });
 
   // Typing past the end of the line: each wrap returns the carriage and rings once.
   await body.pressSequentially(' quartz judge my vow'.repeat(8), { delay: 5 });
-  await expect.poll(async () => (await heard()).slides).toBeGreaterThanOrEqual(3);
+  await expect.poll(async () => (await heard()).slides).toBeGreaterThanOrEqual(base.slides + 3);
   const after = await heard();
-  expect(after.bells).toBe(after.slides - 1);
+  expect(after.bells - base.bells).toBe(after.slides - base.slides - 1);
   await expect(page.getByText(/Saved on this device at/)).toBeVisible();
 
   await page.reload();
@@ -259,7 +272,7 @@ test('typewriter sounds play only when turned on, and the choice persists', asyn
 
 test('rich text is written with the keyboard, the slash menu and the toolbar, and survives a reload', async ({ page }) => {
   await page.goto('./');
-  await newPageInMain(page);
+  await newLoosePage(page);
   const body = page.getByLabel('Page text');
   await body.click();
 
@@ -333,7 +346,7 @@ test('rich text is written with the keyboard, the slash menu and the toolbar, an
   expect((await blockIds())[0]).toBe(before[0]);
 });
 
-test('search finds a page by its text from any screen, and the palette runs commands', async ({ page }) => {
+test('search finds words in every notebook, opens the page at them, and the palette runs commands', async ({ page }) => {
   await page.goto('./');
   await createNotebook(page, 'History');
   await newPageInMain(page);
@@ -350,10 +363,25 @@ test('search finds a page by its text from any screen, and the palette runs comm
   await field.fill('gutenberg');
   const hit = palette.getByRole('option', { name: /The Printing Press/ });
   await expect(hit).toContainText('Gutenberg, around 1440.');
-  await expect(hit).toContainText('Page in History');
+  await expect(hit).toContainText('History');
   await page.keyboard.press('Enter');
   await expect(palette).toBeHidden();
   await expect(page.getByLabel('Page title')).toHaveValue('The Printing Press');
+  // The page opens at the words, with the find bar. Escape closes it.
+  const find = page.getByRole('search', { name: 'Find in this page' });
+  await expect(find.getByText('1 of 1')).toBeVisible();
+  await expect(page.locator('.tn-find-current')).toHaveText('Gutenberg');
+  await find.getByRole('searchbox').press('Escape');
+  await expect(find).toBeHidden();
+
+  // The search field on the home screen groups results by notebook.
+  await page.goto('./');
+  await page.getByRole('searchbox', { name: 'Search all notebooks' }).fill('1440');
+  const group = page.getByRole('region', { name: 'History' });
+  await expect(group.getByRole('link', { name: /The Printing Press/ })).toContainText('1 match');
+  await expect(group.locator('mark')).toHaveText('1440');
+  await group.getByRole('link', { name: /The Printing Press/ }).click();
+  await expect(page.locator('.tn-find-current')).toHaveText('1440');
 
   // The visible way in: the Search button. Escape closes and changes nothing.
   await page.getByRole('button', { name: 'Search', exact: true }).click();
@@ -379,7 +407,7 @@ test('the sheets layout breaks the text into pages, and the paper settings apply
   // Several hundred key presses and two reloads: allow three times the usual limit.
   test.slow();
   await page.goto('./');
-  await newPageInMain(page);
+  await newLoosePage(page);
   const body = page.getByLabel('Page text');
   await body.click();
   for (let line = 1; line <= 40; line++) {
@@ -443,7 +471,7 @@ test('the sheets layout breaks the text into pages, and the paper settings apply
 
 test('a drawing is made in a page, saved, reopened and downloaded as an image', async ({ page }) => {
   await page.goto('./');
-  await newPageInMain(page);
+  await newLoosePage(page);
   await page.getByLabel('Page title').fill('Diagrams');
   await writeBody(page, 'Above the drawing.', '/draw');
   await page.keyboard.press('Enter');
@@ -493,20 +521,17 @@ test('a drawing is made in a page, saved, reopened and downloaded as an image', 
   await expect(page.getByRole('dialog', { name: 'Drawing' })).toBeHidden();
 });
 
-test('the writing atmosphere: typeface, ruled paper, focus mode, covers and the words written', async ({ page }) => {
+test('the writing atmosphere: typeface, ruled paper, focus mode and covers', async ({ page }) => {
   await page.goto('./#/settings');
   await choose(page, 'Typewriter');
   await choose(page, 'Large');
   await choose(page, 'Lined');
-  const goal = page.getByRole('spinbutton', { name: 'Daily word goal' });
-  await goal.fill('10');
-  await expect(page.getByText('10 words', { exact: true })).toBeVisible();
 
   // A notebook with a striped cover and an icon.
   await page.goto('./');
   await createNotebook(page, 'Field notes');
   await expect(page.getByRole('heading', { level: 1, name: 'Field notes' })).toBeVisible();
-  await page.goto('./#/library');
+  await page.goto('./');
   await page.getByRole('button', { name: 'Actions for Field notes' }).click();
   await page.getByRole('menuitem', { name: 'Edit details' }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit notebook' });
@@ -520,6 +545,7 @@ test('the writing atmosphere: typeface, ruled paper, focus mode, covers and the 
 
   // A page in the chosen typeface, on ruled paper: every block starts on a rule.
   await page.goto('./');
+  await page.getByRole('link', { name: 'Field notes' }).first().click();
   await newPageInMain(page);
   await writeBody(page, 'One two three four five six seven eight nine ten eleven twelve.', 'A second paragraph.');
   await page.keyboard.press('Enter');
@@ -553,8 +579,34 @@ test('the writing atmosphere: typeface, ruled paper, focus mode, covers and the 
   await expect(toolbar).toBeVisible();
   await expect(page.getByText(/Saved on this device at/)).toBeVisible();
 
-  // The desk counts today's words against the goal.
+});
+
+test('the typing test times a passage from my notes, with the typewriter sounds, and saves nothing', async ({ page }) => {
+  await page.clock.install();
   await page.goto('./');
-  await expect(page.getByText('Goal reached', { exact: false })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Last seven days' }).getByRole('listitem')).toHaveCount(7);
+  await createNotebook(page, 'Biology');
+  await newPageInMain(page);
+  await page.getByLabel('Page title').fill('Cells');
+  await writeBody(page, 'Cells are the basic unit of life. Every cell comes from another cell. Membranes keep the inside apart.');
+  await expect(page.getByText(/Saved on this device at/)).toBeVisible();
+
+  await page.getByRole('navigation', { name: /^(Main|Quick) navigation$/ }).getByRole('link', { name: 'Typing test' }).first().click();
+  await choose(page, '15 s');
+  const field = page.getByLabel('Type the passage. The clock starts with the first key.');
+  const passage = (await page.locator('.tn-typing-text').textContent()) ?? '';
+  expect(passage).toMatch(/^(Cells|Every|Membranes) /);
+
+  // Ten letters right, then one wrong.
+  await field.pressSequentially(passage.slice(0, 10));
+  await field.press(passage[10] === 'x' ? 'y' : 'x');
+  await expect(page.locator('.tn-typing-wrong')).toHaveCount(1);
+  await expect(page.getByText('Esc to start again')).toBeVisible();
+
+  await page.clock.runFor(16_000);
+  const result = page.getByRole('region', { name: 'Result' });
+  await expect(result.getByText('10 right · 1 wrong')).toBeVisible();
+  await expect(result.getByText('Results are not saved anywhere.')).toBeVisible();
+  // 10 right letters in 15 seconds: two words in a quarter of a minute.
+  await expect(result.getByRole('definition').first()).toHaveText('8');
+  await expect(page.getByRole('button', { name: 'New test' })).toBeFocused();
 });

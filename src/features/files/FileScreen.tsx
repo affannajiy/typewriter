@@ -17,7 +17,7 @@ export default function FileScreen() {
 
   if (attachment === undefined) return <LoadingBlock />;
   if (attachment === null) {
-    return <EmptyState icon={FileQuestion} title={t.files.title} body={t.files.notFound} action={<Button onClick={() => navigate('/files')}>{t.nav.files}</Button>} />;
+    return <EmptyState icon={FileQuestion} title={t.files.title} body={t.files.notFound} action={<Button onClick={() => navigate('/')}>{t.nav.notebooks}</Button>} />;
   }
   if (attachment.kind === 'pdf') return <PdfReader key={attachment.id} attachment={attachment} />;
   return (

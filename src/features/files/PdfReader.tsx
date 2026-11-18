@@ -1,11 +1,12 @@
 import { ArrowLeft, Download, Highlighter, MoveHorizontal, NotebookText, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Button, IconButton, cx } from '@/components/ui/Button';
 import { LoadingBlock } from '@/components/ui/Layout';
 import { useToast } from '@/components/ui/Toast';
 import { addAnnotation, deleteAnnotation, noteAttachmentFacts, restoreAnnotation, updateAnnotation } from '@/database/repositories/attachments';
 import { useGuarded } from '@/features/organisation/useItemActions';
+import { findMatches, queryWords } from '@/features/search/search';
 import { useAnnotations, useAttachmentBytes } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 import { type SaveStatus, createAutosaver } from '@/services/autosave';
@@ -45,8 +46,37 @@ function selectionOnPage(range: Range, pageElement: HTMLElement): PendingHighlig
   return quote && rects.length > 0 ? { page, rects, quote } : null;
 }
 
+/**
+ * Marks the words of a search in a page's text layer. PDF.js draws one span
+ * per run of text; each match inside it is wrapped in its own span, which
+ * shows through the transparent text.
+ */
+function markMatches(layer: HTMLElement, words: string[]): void {
+  if (words.length === 0) return;
+  for (const span of layer.querySelectorAll<HTMLElement>('span[role="presentation"]')) {
+    if (span.children.length > 0) continue;
+    const text = span.textContent ?? '';
+    const found = findMatches(text, words);
+    if (found.length === 0) continue;
+    const parts: Node[] = [];
+    let at = 0;
+    for (const [start, end] of found) {
+      if (start > at) parts.push(document.createTextNode(text.slice(at, start)));
+      const mark = document.createElement('span');
+      mark.className = 'tn-pdf-match';
+      mark.textContent = text.slice(start, end);
+      parts.push(mark);
+      at = end;
+    }
+    if (at < text.length) parts.push(document.createTextNode(text.slice(at)));
+    span.replaceChildren(...parts);
+  }
+}
+
 interface PageProps {
   doc: PdfDocument;
+  /** Words of the search that opened the reader, marked in the text. */
+  words: string[];
   number: number;
   size: PdfPageSize;
   scale: number;
@@ -59,7 +89,7 @@ interface PageProps {
  * One page. It is painted only while near the screen, and its canvas is
  * released when it scrolls far away, so a long PDF does not fill the memory.
  */
-function PdfPage({ doc, number, size, scale, highlights, activeId, onHighlightClick }: PageProps) {
+function PdfPage({ doc, words, number, size, scale, highlights, activeId, onHighlightClick }: PageProps) {
   const frame = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const text = useRef<HTMLDivElement>(null);
@@ -83,7 +113,7 @@ function PdfPage({ doc, number, size, scale, highlights, activeId, onHighlightCl
     const painting = doc.renderPage(number, paper, scale);
     const lettering = doc.renderText(number, layer, scale);
     painting.done.catch((error: unknown) => console.error(error));
-    lettering.done.catch((error: unknown) => console.error(error));
+    lettering.done.then(() => markMatches(layer, words)).catch((error: unknown) => console.error(error));
     return () => {
       painting.cancel();
       lettering.cancel();
@@ -91,7 +121,7 @@ function PdfPage({ doc, number, size, scale, highlights, activeId, onHighlightCl
       paper.width = 0;
       paper.height = 0;
     };
-  }, [doc, near, number, scale]);
+  }, [doc, near, number, scale, words]);
 
   const click = (event: MouseEvent<HTMLDivElement>) => {
     if (!document.getSelection()?.isCollapsed) return;
@@ -213,6 +243,12 @@ export function PdfReader({ attachment }: { attachment: Attachment }) {
   const [activeId, setActiveId] = useState<Id | null>(null);
   const [showNotes, setShowNotes] = useState(() => typeof window !== 'undefined' && (window.matchMedia?.('(min-width: 64rem)').matches ?? false));
   const pages = useRef<HTMLDivElement>(null);
+  // Opened from a search result: `?page=` is where the words are, `?q=` the words to mark.
+  const [params] = useSearchParams();
+  const query = params.get('q') ?? '';
+  const words = useMemo(() => queryWords(query), [query]);
+  const startPage = Number(params.get('page'));
+  const jumped = useRef(false);
 
   // Open the document once its bytes are here.
   useEffect(() => {
@@ -304,6 +340,13 @@ export function PdfReader({ attachment }: { attachment: Attachment }) {
     element?.scrollIntoView({ block: 'start' });
   }, []);
 
+  // Once the pages have their sizes, go to the page the search found, once.
+  useEffect(() => {
+    if (jumped.current || !sizes || !Number.isInteger(startPage) || startPage < 2 || startPage > sizes.length) return;
+    jumped.current = true;
+    requestAnimationFrame(() => goTo(startPage));
+  }, [sizes, startPage, goTo]);
+
   const submitPage = (event: FormEvent) => {
     event.preventDefault();
     const page = Math.round(Number(pageText));
@@ -344,7 +387,7 @@ export function PdfReader({ attachment }: { attachment: Attachment }) {
   const back = () => {
     // A reader opened from a link has no page to go back to inside the app.
     if (((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0) navigate(-1);
-    else navigate('/files');
+    else navigate('/');
   };
 
   const byPage = useMemo(() => {
@@ -417,6 +460,7 @@ export function PdfReader({ attachment }: { attachment: Attachment }) {
               <PdfPage
                 key={index}
                 doc={doc}
+                words={words}
                 number={index + 1}
                 size={size}
                 scale={scale}

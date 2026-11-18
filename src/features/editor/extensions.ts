@@ -5,11 +5,11 @@ import StarterKit from '@tiptap/starter-kit';
 import { Suggestion, type SuggestionProps } from '@tiptap/suggestion';
 import { DrawingNode, type DrawingNodeOptions } from '@/features/drawing/drawingNode';
 import { AudioNode, type FileNodeOptions, PdfNode } from '@/features/files/fileNodes';
-import { PageLink, type PageLinkOptions } from '@/features/links/pageLinkNode';
 import { t } from '@/i18n/en';
 import type { DocNode } from '@/types/models';
 import { BlockId } from './blockIds';
 import { duplicateBlock, moveBlock } from './blocks';
+import { FindInPage } from './findInPage';
 import { BLOCK_COMMANDS, type EditorCommand, filterCommands } from './commands';
 import { MathBlock, MathInline, type MathNodeOptions } from './mathNodes';
 import { Pagination, type PaginationOptions } from './pagination';
@@ -85,12 +85,7 @@ const BlockKeymap = Extension.create({
 export const BLOCK_SHORTCUTS = { moveUp: 'Alt+Shift+↑', moveDown: 'Alt+Shift+↓', duplicate: 'Mod+Shift+D' };
 
 /** The document schema: the same list everywhere a document is read or checked. */
-export interface StudyWiring {
-  math?: Partial<MathNodeOptions>;
-  links?: Partial<PageLinkOptions>;
-}
-
-export function schemaExtensions(drawing: Partial<DrawingNodeOptions> = {}, files: { pdf?: Partial<FileNodeOptions>; audio?: Partial<FileNodeOptions> } = {}, study: StudyWiring = {}): AnyExtension[] {
+export function schemaExtensions(drawing: Partial<DrawingNodeOptions> = {}, files: { pdf?: Partial<FileNodeOptions>; audio?: Partial<FileNodeOptions> } = {}, math: Partial<MathNodeOptions> = {}): AnyExtension[] {
   return [
     // Links need their own interface (open, edit, remove). Until it exists, pasted addresses stay plain text.
     StarterKit.configure({ link: false, heading: { levels: [1, 2, 3] } }),
@@ -99,9 +94,8 @@ export function schemaExtensions(drawing: Partial<DrawingNodeOptions> = {}, file
     DrawingNode.configure(drawing),
     PdfNode.configure(files.pdf ?? {}),
     AudioNode.configure(files.audio ?? {}),
-    MathInline.configure(study.math ?? {}),
-    MathBlock.configure(study.math ?? {}),
-    PageLink.configure(study.links ?? {}),
+    MathInline.configure(math),
+    MathBlock.configure(math),
     BlockId,
   ];
 }
@@ -130,17 +124,18 @@ export interface EditorWiring {
   pagination: PaginationOptions;
   drawing: Partial<DrawingNodeOptions>;
   files?: { pdf?: Partial<FileNodeOptions>; audio?: Partial<FileNodeOptions> };
-  study?: StudyWiring;
+  math?: Partial<MathNodeOptions>;
 }
 
 export function editorExtensions(wiring: EditorWiring): AnyExtension[] {
   return [
-    ...schemaExtensions(wiring.drawing, wiring.files, wiring.study),
+    ...schemaExtensions(wiring.drawing, wiring.files, wiring.math),
     Placeholder.configure({ placeholder: t.page.bodyPlaceholder }),
     // Marks the top-level block that holds the caret. Focus mode fades the others (editor.css).
     Focus.configure({ className: 'has-focus', mode: 'shallowest' }),
     SlashCommands.configure({ bridge: wiring.slash }),
     BlockKeymap,
     Pagination.configure(wiring.pagination),
+    FindInPage,
   ];
 }

@@ -8,6 +8,8 @@ export interface ToastInput {
   tone?: 'info' | 'error';
   /** One follow-up action, usually Undo. */
   action?: { label: string; run: () => void };
+  /** Stays until dismissed, like an error. */
+  sticky?: boolean;
 }
 
 interface ToastItem extends ToastInput {
@@ -31,7 +33,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       // Keep at most three on screen: older ones give way.
       setToasts((list) => [...list.slice(-2), { ...input, id }]);
       // Errors stay until dismissed, so they cannot be missed.
-      if (input.tone !== 'error') setTimeout(() => dismiss(id), input.action ? DISMISS_WITH_ACTION_MS : DISMISS_MS);
+      if (input.tone !== 'error' && !input.sticky) setTimeout(() => dismiss(id), input.action ? DISMISS_WITH_ACTION_MS : DISMISS_MS);
     },
     [dismiss],
   );

@@ -1,17 +1,15 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo } from 'react';
-import { type FileUse, getAttachment, listAnnotations, listAttachments, listFileUses, readAttachmentBytes } from '@/database/repositories/attachments';
+import { type FileUse, fileUses, getAttachment, listAnnotations, listAttachments, listFileUses, readAttachmentBytes } from '@/database/repositories/attachments';
 import { getDrawing } from '@/database/repositories/drawings';
-import { getDeck, listCards, listDecks, listReviewLogs } from '@/database/repositories/flashcards';
-import { listFolders } from '@/database/repositories/folders';
 import { listNotebooks } from '@/database/repositories/notebooks';
 import { listPages } from '@/database/repositories/pages';
+import { listPdfTexts } from '@/database/repositories/pdfTexts';
 import { readSettings } from '@/database/repositories/settings';
-import { listTags } from '@/database/repositories/tags';
 import { listTrash } from '@/database/repositories/trash';
-import { listWritingDays } from '@/database/repositories/writing';
 import { type AppSettings, resolveSettings } from '@/features/settings/model';
-import type { Annotation, Attachment, Deck, Drawing, Flashcard, Folder, Id, Notebook, Page, ReviewLog, Tag, WritingDay } from '@/types/models';
+import type { SearchSource } from '@/features/search/search';
+import type { Annotation, Attachment, Drawing, Id, Notebook, Page } from '@/types/models';
 
 /**
  * Live views of the workspace. Components read data only through these hooks,
@@ -22,21 +20,37 @@ import type { Annotation, Attachment, Deck, Drawing, Flashcard, Folder, Id, Note
  */
 
 export interface Workspace {
-  folders: Folder[];
   notebooks: Notebook[];
   pages: Page[];
-  tags: Tag[];
 }
 
 /** Undefined while the first read is in progress. */
 export function useWorkspace(): Workspace | undefined {
   return useLiveQuery(async () => {
-    const [folders, notebooks, pages, tags] = await Promise.all([listFolders(), listNotebooks(), listPages(), listTags()]);
-    return { folders, notebooks, pages, tags };
+    const [notebooks, pages] = await Promise.all([listNotebooks(), listPages()]);
+    return { notebooks, pages };
   }, []);
 }
 
 export const useTrash = () => useLiveQuery(listTrash, []);
+
+/**
+ * What search looks through: the workspace, and the text of PDFs with the
+ * live pages that show them. Undefined while the first read is in progress.
+ */
+export function useSearchSource(): SearchSource | undefined {
+  return useLiveQuery(async () => {
+    const [notebooks, pages, files, texts] = await Promise.all([listNotebooks(), listPages(), listAttachments(), listPdfTexts()]);
+    const uses = new Map([...fileUses(pages)].map(([id, use]) => [id, use.live]));
+    return {
+      notebooks,
+      pages,
+      pdfTexts: new Map(texts.map((entry) => [entry.id, entry.pages])),
+      fileNames: new Map(files.map((file) => [file.id, file.name])),
+      fileUses: uses,
+    };
+  }, []);
+}
 
 /** A drawing's stored strokes. Undefined while loading; null when the drawing has never been saved. */
 export function useDrawing(id: Id | null): Drawing | null | undefined {
@@ -72,29 +86,6 @@ export function useAttachmentBytes(id: Id | null): ArrayBuffer | null | undefine
 /** A PDF's highlights in reading order. Undefined while loading. */
 export function useAnnotations(attachmentId: Id): Annotation[] | undefined {
   return useLiveQuery(() => listAnnotations(attachmentId), [attachmentId]);
-}
-
-/** Every day with words written, oldest first. One small row per day. Undefined while loading. */
-export function useWritingDays(): WritingDay[] | undefined {
-  return useLiveQuery(() => listWritingDays(''), []);
-}
-
-/** Every deck, in order. Undefined while loading. */
-export const useDecks = (): Deck[] | undefined => useLiveQuery(listDecks, []);
-
-/** One deck. Undefined while loading; null when there is no such deck. */
-export function useDeck(id: Id): Deck | null | undefined {
-  return useLiveQuery(async () => (await getDeck(id)) ?? null, [id]);
-}
-
-/** Every card, or one deck's, oldest first. Undefined while loading. */
-export function useCards(deckId?: Id): Flashcard[] | undefined {
-  return useLiveQuery(() => listCards(deckId), [deckId]);
-}
-
-/** Answers given since `since` (usually the start of today). Undefined while loading. */
-export function useReviewLogs(since: number): ReviewLog[] | undefined {
-  return useLiveQuery(() => listReviewLogs(since), [since]);
 }
 
 export function useSettings(): AppSettings {

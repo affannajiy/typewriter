@@ -1,32 +1,28 @@
 import { DatabaseZap, TriangleAlert } from 'lucide-react';
 import { Component, type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
-import { HashRouter, Route, Routes } from 'react-router';
+import { HashRouter, Navigate, Route, Routes } from 'react-router';
 import { AppShell } from '@/components/navigation/AppShell';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, LoadingBlock } from '@/components/ui/Layout';
 import { ToastProvider } from '@/components/ui/Toast';
+import { UpdatePrompt } from './UpdatePrompt';
 import { db } from '@/database/db';
-import { DashboardScreen } from '@/features/dashboard/DashboardScreen';
-import { FilesScreen } from '@/features/files/FilesScreen';
 import { LibraryScreen } from '@/features/library/LibraryScreen';
 import { NotebookScreen } from '@/features/library/NotebookScreen';
 import { NotFound } from '@/features/pages/NotFound';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { applyAppearance } from '@/features/settings/appearance';
-import { TagsScreen } from '@/features/tags/TagsScreen';
 import { TrashScreen } from '@/features/trash/TrashScreen';
 import { useSettings, useSettingsLoaded } from '@/hooks/useData';
+import { indexPdfs } from '@/services/pdfIndex';
 import { t } from '@/i18n/en';
 
 // The editor is the heaviest part of the app. It loads when a page is first opened.
 const PageScreen = lazy(() => import('@/features/pages/PageScreen'));
 // The PDF reader brings PDF.js, loaded when a file is first opened.
 const FileScreen = lazy(() => import('@/features/files/FileScreen'));
-// Study brings KaTeX and the scheduler; the graph its layout. Loaded when first visited.
-const StudyScreen = lazy(() => import('@/features/study/StudyScreen'));
-const DeckScreen = lazy(() => import('@/features/study/DeckScreen'));
-const ReviewScreen = lazy(() => import('@/features/study/ReviewScreen'));
-const GraphScreen = lazy(() => import('@/features/graph/GraphScreen'));
+// The typing test, loaded when first visited.
+const TypingTestScreen = lazy(() => import('@/features/typing/TypingTestScreen'));
 
 const later = (screen: ReactNode) => <Suspense fallback={<LoadingBlock />}>{screen}</Suspense>;
 
@@ -76,7 +72,11 @@ export function App() {
 
   useEffect(() => {
     db.open().then(
-      () => setDbState('ready'),
+      () => {
+        setDbState('ready');
+        // PDFs added before 0.8.0, or restored from a backup, have no stored text yet.
+        indexPdfs();
+      },
       (error: unknown) => {
         console.error(error);
         setDbState('failed');
@@ -97,12 +97,13 @@ export function App() {
     <ErrorBoundary>
       <ToastProvider>
         <AppearanceSync />
+        <UpdatePrompt />
         <HashRouter>
           <Routes>
             <Route element={<AppShell />}>
-              <Route index element={<DashboardScreen />} />
-              <Route path="library" element={<LibraryScreen />} />
-              <Route path="library/folder/:folderId" element={<LibraryScreen />} />
+              <Route index element={<LibraryScreen />} />
+              {/* Addresses from before 0.8.0, when home was a dashboard and the shelf was the library. */}
+              <Route path="library/*" element={<Navigate to="/" replace />} />
               <Route path="notebook/:notebookId" element={<NotebookScreen />} />
               <Route
                 path="page/:pageId"
@@ -112,7 +113,6 @@ export function App() {
                   </Suspense>
                 }
               />
-              <Route path="files" element={<FilesScreen />} />
               <Route
                 path="file/:fileId"
                 element={
@@ -121,12 +121,7 @@ export function App() {
                   </Suspense>
                 }
               />
-              <Route path="study" element={later(<StudyScreen />)} />
-              <Route path="study/deck/:deckId" element={later(<DeckScreen />)} />
-              <Route path="study/review/:deckId" element={later(<ReviewScreen />)} />
-              <Route path="graph" element={later(<GraphScreen />)} />
-              <Route path="tags" element={<TagsScreen />} />
-              <Route path="tags/:tagId" element={<TagsScreen />} />
+              <Route path="typing" element={later(<TypingTestScreen />)} />
               <Route path="trash" element={<TrashScreen />} />
               <Route path="settings" element={<SettingsScreen />} />
               <Route path="*" element={<NotFound />} />

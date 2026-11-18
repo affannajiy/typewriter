@@ -29,7 +29,8 @@ import { contrast, isHexColour } from '@/utils/colour';
 import { formatDateTime } from '@/utils/dates';
 import { describeError } from '@/utils/errors';
 import { formatShortcut } from '@/features/editor/commands';
-import { type AppSettings, EDITOR_FONTS, EDITOR_LEADINGS, EDITOR_SIZES, EDITOR_WIDTHS, MAX_DAILY_GOAL, NEW_PER_DAY_CHOICES, PAPER_STYLES, RETENTION_CHOICES, SOUND_MACHINES, type SettingKey, THEME_IDS, type ThemeChoice } from './model';
+import { indexPdfs } from '@/services/pdfIndex';
+import { type AppSettings, EDITOR_FONTS, EDITOR_LEADINGS, EDITOR_SIZES, EDITOR_WIDTHS, PAPER_STYLES, SOUND_MACHINES, type SettingKey, THEME_IDS, type ThemeChoice } from './model';
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -85,7 +86,6 @@ export function SettingsScreen() {
         </Card>
       </Section>
       <SoundSection settings={settings} set={set} />
-      <StudySection settings={settings} set={set} />
       <StorageSection settings={settings} />
       <Section title={t.settings.privacy.title}>
         <Card className="flex gap-3 px-4 py-3 text-sm text-ink">
@@ -177,21 +177,9 @@ function AppearanceSection({ settings, set }: { settings: AppSettings; set: <K e
 
 type Setter = <K extends SettingKey>(key: K, value: AppSettings[K]) => void;
 
-/** Typeface, size, spacing and column of the page text, with a sample; focus mode; the daily goal. */
+/** Typeface, size, spacing and column of the page text, with a sample; focus mode. */
 function TextSection({ settings, set }: { settings: AppSettings; set: Setter }) {
   const copy = t.settings.text;
-  // The field may hold a half-typed number; only a valid one is stored. While the
-  // writer types, the field is theirs: a stored value arriving late must not overwrite it.
-  const [goal, setGoal] = useState(String(settings.dailyGoal));
-  const [editingGoal, setEditingGoal] = useState(false);
-  const [storedGoal, setStoredGoal] = useState(settings.dailyGoal);
-  if (storedGoal !== settings.dailyGoal && !editingGoal) {
-    setStoredGoal(settings.dailyGoal);
-    setGoal(String(settings.dailyGoal));
-  }
-  const goalNumber = Number(goal);
-  const goalValid = goal.trim() !== '' && Number.isInteger(goalNumber) && goalNumber >= 0 && goalNumber <= MAX_DAILY_GOAL;
-
   return (
     <Section title={copy.title}>
       <Card>
@@ -235,67 +223,6 @@ function TextSection({ settings, set }: { settings: AppSettings; set: Setter }) 
               { value: 'off', label: copy.focusDimOff },
             ]}
             onChange={(value) => set('focusDim', value === 'on')}
-          />
-        </Row>
-        <Row label={copy.goal} hint={copy.goalHint}>
-          <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="daily-goal">
-              {copy.goal}
-            </label>
-            <input
-              id="daily-goal"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={MAX_DAILY_GOAL}
-              step={50}
-              value={goal}
-              aria-invalid={!goalValid}
-              onFocus={() => setEditingGoal(true)}
-              onBlur={() => {
-                setEditingGoal(false);
-                // Leaving the field with an invalid number shows the stored goal again.
-                setStoredGoal(settings.dailyGoal);
-                setGoal(String(settings.dailyGoal));
-              }}
-              onChange={(e) => {
-                setGoal(e.target.value);
-                const next = Number(e.target.value);
-                if (e.target.value.trim() !== '' && Number.isInteger(next) && next >= 0 && next <= MAX_DAILY_GOAL) set('dailyGoal', next);
-              }}
-              className="h-11 w-28 rounded-md border border-line-strong bg-surface px-3 text-sm text-ink tabular-nums aria-invalid:border-danger"
-            />
-            <output htmlFor="daily-goal" className="text-sm text-muted">
-              {goalValid ? copy.goalValue(goalNumber) : copy.goalValue(settings.dailyGoal)}
-            </output>
-          </div>
-        </Row>
-      </Card>
-    </Section>
-  );
-}
-
-function StudySection({ settings, set }: { settings: AppSettings; set: <K extends SettingKey>(key: K, value: AppSettings[K]) => void }) {
-  const copy = t.settings.study;
-  return (
-    <Section title={copy.title}>
-      <Card>
-        <Row label={copy.newPerDay} hint={copy.newPerDayHint}>
-          <Segmented
-            legend={copy.newPerDay}
-            name="study-new-per-day"
-            value={String(settings.studyNewPerDay)}
-            options={NEW_PER_DAY_CHOICES.map((n) => ({ value: String(n), label: String(n) }))}
-            onChange={(value) => set('studyNewPerDay', Number(value))}
-          />
-        </Row>
-        <Row label={copy.retention} hint={copy.retentionHint}>
-          <Segmented
-            legend={copy.retention}
-            name="study-retention"
-            value={String(settings.studyRetention)}
-            options={RETENTION_CHOICES.map((n) => ({ value: String(n), label: copy.retentionValue(n) }))}
-            onChange={(value) => set('studyRetention', Number(value))}
           />
         </Row>
       </Card>
@@ -452,6 +379,8 @@ function StorageSection({ settings }: { settings: AppSettings }) {
     setBusy('restore');
     await guarded(async () => {
       const report = await restoreBackup(pending.file, mode);
+      // Restored PDFs come without their text: read it again for search.
+      indexPdfs();
       toast({ message: t.settings.storage.restored(report.added, report.updated, report.skipped) + (report.repaired > 0 ? ` ${t.settings.storage.repaired(report.repaired)}` : '') });
       setPending(null);
     });
@@ -511,6 +440,7 @@ function StorageSection({ settings }: { settings: AppSettings }) {
               onClick={() =>
                 void guarded(async () => {
                   await restoreSnapshot(snapshot.id);
+                  indexPdfs();
                   toast({ message: t.settings.storage.undone });
                 })
               }
@@ -540,6 +470,7 @@ function StorageSection({ settings }: { settings: AppSettings }) {
               {t.settings.storage.fileContains(pending.summary.counts)} {t.settings.storage.fileDate(formatDateTime(new Date(pending.file.exportedAt).getTime() || 0))}
             </p>
             {pending.summary.duplicates > 0 && <p className="rounded-md border border-line-strong bg-sunken px-3 py-2">{t.settings.storage.duplicates(pending.summary.duplicates)}</p>}
+            {pending.summary.droppedLegacy && <p className="rounded-md border border-line-strong bg-sunken px-3 py-2">{t.settings.storage.droppedLegacy}</p>}
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 font-medium">{t.settings.storage.modeLegend}</legend>
               {modes.map((option) => (

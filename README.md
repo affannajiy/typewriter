@@ -1,37 +1,30 @@
 # TypeNote
 
-Your personal digital writing atelier: a private, local-first notebook that runs in the browser.
+A notepad you type into like a typewriter. It is private, local-first, and runs in the browser.
 
-**Status:** Milestones 1 to 7 of 8 are complete (foundation, database and organisation, writing editor,
-drawing, writing atmosphere, PDF and audio, study features). Polish and deployment are next.
-See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for the exact state of every feature.
+**Status:** 0.8.0, the revamp. Milestones 1 to 7 are complete. Milestone 8 (polish and deployment) has offline use and the revamp done. Deployment is still to do. [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) gives the state of each feature.
 
 ## What works today
 
-- Equations (`$x^2$`, or `$$` on an empty line), drawn with KaTeX. Links between pages with `[[`, a "Linked from" list under each page, and a graph of all the links.
-- Flashcards in decks, scheduled with FSRS: make one from any page, study with Space and 1 to 4, undo the last answer. `$…$` in a card is an equation.
-- PDFs and sound recordings in pages (`/pdf`, `/record`). A PDF reader with zoom, page numbers, highlights in four colours and a note on each highlight. Recording with the microphone, with pause; or a sound file. A Files screen lists every file and where it is used.
-- Folders (nested), notebooks with coloured covers, and pages. A page can live in a notebook, in a folder, or on its own.
-- Rename, move, reorder, favourite and pin. Tags across the whole workspace.
-- A rich-text editor with autosave: headings, bold, italic, underline, lists, checklists, quotes, code and dividers. "Saved" appears only after the database confirms the write.
-- Type `/` for a menu of block types. Move, duplicate, delete or convert a block from the block menu.
-- Search and commands with Ctrl/Cmd + K: find a page by its name or its text, jump to a screen, or format the open page.
-- Drawings in pages: type `/draw`. Pen (pressure-sensitive with a stylus) and highlighter in five inks, an eraser that cuts lines, a lasso to move, resize or delete, undo, and PNG download.
-- Two layouts per page: continuous, or sheets of paper (A4, Letter or A5, with three margin widths).
-- Your choice of typeface (Lora, Inter or JetBrains Mono), text size, line spacing and column width, on plain, lined, squared or dotted paper. The text stays on the rules.
-- Focus mode (Ctrl/Cmd + Shift + F): only the page, with the paragraph you are writing in full strength.
-- Notebook covers in any colour, with a finish (linen, stripes, dots, grid) and an icon.
-- Your writing on the desk: words written today against a daily goal, your streak, and the last seven days.
-- Typewriter sounds while you write, modelled on a manual desk machine: key strikes, space bar, backspace, shift, the carriage return with its bell on Enter and when a line wraps, and paper being fed in when a page opens. Three machines: desk, portable and office. Off by default; turn them on with the speaker button under the page, or in **Settings → Writing sounds**, where the machine, the volume and the bell are set.
-- Trash: deleting moves an item and its contents to the Trash, with Undo. Nothing is purged automatically.
-- Full backup to one JSON file, and restore with three conflict modes. A "replace" restore can be undone.
-- Six themes, custom accent colour, interface density, animation control. Follows the system light/dark setting.
-- Desktop sidebar, mobile bottom bar and drawer. Menus, dialogs and forms are keyboard-operable.
-- No account, no server, no analytics. Notes stay in this browser's IndexedDB.
+- **Shelf.** The app opens on your notebooks. With no notebook, one button makes the first, and it opens ready to write. Pages in no notebook show below the shelf.
+- **Typewriter.** Key strikes, space bar, backspace, shift, the carriage return with its bell (on Enter and when a line wraps), and paper feed when a page opens. Three machines: desk, portable, office. On by default, in the typewriter typeface. The speaker button below the page turns sound off. **Settings** changes the machine, volume, bell and typeface.
+- **Search** from the home screen or with Ctrl/Cmd + K: notebook names, page titles, page text, and the text of PDFs in pages. Results are grouped by notebook, with the words marked. A page opens at the match. Enter and Shift+Enter step through the matches.
+- **Typing test** with typewriter sounds: 15, 30 or 60 seconds, on a passage from your notes or a built-in one. Shows words per minute and accuracy. Never saved.
+- **Rich-text editor** with autosave: headings, bold, italic, underline, lists, checklists, quotes, code, dividers. "Saved" shows only after the database confirms the write. Type `/` for a block menu.
+- **Equations** (`$x^2$`, or `$$` on an empty line), drawn with KaTeX.
+- **Drawings** in pages (`/draw`): pen (pressure-sensitive with a stylus) and highlighter in five inks, an eraser that cuts lines, a lasso to move, resize or delete, undo, PNG download.
+- **PDFs and recordings** in pages (`/pdf`, `/record`). PDF reader with zoom, page numbers, highlights in four colors, and a note on each highlight. Record with the microphone (with pause) or use a sound file. Download from the block.
+- **Layouts:** continuous, or sheets of paper (A4, Letter, A5, three margin widths). Paper: plain, lined, squared or dotted. The text stays on the rules.
+- **Focus mode** (Ctrl/Cmd + Shift + F) shows only the page. The slim sidebar also fades while you type.
+- **Covers** in any color, with a finish (linen, stripes, dots, grid) and an icon.
+- **Offline** after the first visit. You can install it as an app.
+- **Trash** with Undo. Nothing is purged automatically. Full backup to one JSON file. Restore with three conflict modes.
+- **Appearance:** six themes, custom accent color, interface density, animation control. Follows the system light/dark setting.
+- **Privacy:** no account, no server, no analytics. Notes stay in the IndexedDB of this browser.
 
 ## Run it locally
 
-Developed and tested with Node.js 24.
+Node.js 24.
 
 ```bash
 npm install
@@ -59,8 +52,7 @@ Open <http://localhost:5173/typewriter/>.
 2. In the repository, open **Settings → Pages** and set **Source** to **GitHub Actions**.
 3. Push to `main`. The workflow in `.github/workflows/deploy.yml` typechecks, lints, tests, builds and deploys.
 
-The base path is taken from the repository name in CI. For a local build under another path, or at a
-domain root (for example Vercel), set `TYPENOTE_BASE`:
+In CI, the base path comes from the repository name. For a local build under a different path, or at a domain root (for example Vercel), set `TYPENOTE_BASE`:
 
 ```bash
 TYPENOTE_BASE=/ npm run build
@@ -68,8 +60,7 @@ TYPENOTE_BASE=/ npm run build
 
 Routing uses the URL hash (`/#/page/…`), so direct links and refresh work on any static host.
 
-The deployed site is public, but it contains only the application. Your notes are stored in your own
-browser and are never part of the build.
+The deployed site is public, but it holds only the application. Your notes stay in your browser and are never part of the build.
 
 ## Keyboard
 
@@ -85,31 +76,30 @@ browser and are never part of the build.
 | Alt + Shift + ↑ / ↓ | Move the current block up or down |
 | Ctrl/Cmd + Shift + D | Duplicate the current block |
 | `/` in the text | Menu of block types |
-| `[[` in the text | Link to a page |
 | `$…$` · `$$` and a space on an empty line · Ctrl/Cmd + Shift + E | Inline equation · equation block · inline equation |
-| Space · 1, 2, 3, 4 · Z (in a study session) | Show the answer · Again, Hard, Good, Easy · undo the last answer |
+| Enter · Shift + Enter (find bar open) | Next match · previous match |
 | Ctrl/Cmd + Z · Ctrl/Cmd + Shift + Z | Undo · redo |
 | Tab / Shift + Tab | Move between controls |
 | Enter / Space | Activate a control, open a menu |
-| Arrow keys, Home, End | Move inside an open menu or the formatting toolbar |
-| Escape | Close a menu, dialog or the navigation drawer |
+| Arrow keys, Home, End | Move in an open menu or the formatting toolbar |
+| Escape | Close a menu, dialog, find bar or the navigation drawer |
 
-Each formatting button shows its shortcut in its tooltip, and the palette lists them. Custom key bindings are not built yet.
+Each formatting button shows its shortcut in its tooltip, and the palette lists them. Custom key bindings are not available yet.
 
 ## Your data
 
-- Notes live in IndexedDB in this browser profile. They are **not encrypted**: anyone who can use the profile can read them.
-- A browser may clear site data when a device runs low on space. Use **Settings → Storage and backup** to ask the browser to protect the data and to download backups.
-- Clearing site data for this page deletes your notes. Export a backup first.
+- Notes are in IndexedDB in this browser profile. They are **not encrypted**. Anyone who can use the profile can read them.
+- A browser can clear site data when a device is low on space. In **Settings → Storage and backup**, ask the browser to protect the data, and download backups.
+- If you clear the site data for this page, you delete your notes. Export a backup first.
 
 ## Documentation
 
 | File | Covers |
 | --- | --- |
-| [PRD.md](PRD.md) | Product scope and the decisions made so far |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Layers, rules, and technical decisions with reasons |
+| [PRD.md](PRD.md) | Product scope and decisions |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Layers, rules, technical decisions with reasons |
 | [DATA_MODEL.md](DATA_MODEL.md) | Entities, indexes, backup format, migrations |
 | [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) | Milestones and the implementation checklist |
 | [TESTING.md](TESTING.md) | What is tested, how, and what is not |
-| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
-| [rulebooks/](rulebooks/README.md) | UI/UX, security and engineering rules the project follows |
+| [CHANGELOG.md](CHANGELOG.md) | Changes in each version |
+| [rulebooks/](rulebooks/README.md) | UI/UX, security and engineering rules for the project |

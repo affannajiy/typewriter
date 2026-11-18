@@ -1,28 +1,24 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Annotation, Attachment, AttachmentData, Deck, Drawing, Flashcard, Folder, Notebook, Page, ReviewLog, SafetySnapshot, SettingRecord, Tag, WritingDay } from '@/types/models';
+import type { Annotation, Attachment, AttachmentData, DocNode, Drawing, Notebook, Page, PdfText, SafetySnapshot, SettingRecord } from '@/types/models';
+import { REMOVED_SETTING_KEYS, convertLegacyDoc, dropLegacyFields } from './legacy';
 
 /**
  * Current database schema version. Bump it together with a new
  * `this.version(n)` block. Never edit a released version block: add a new
  * one with an `.upgrade()` step so existing data is migrated, not lost.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export class TypeNoteDB extends Dexie {
-  folders!: EntityTable<Folder, 'id'>;
   notebooks!: EntityTable<Notebook, 'id'>;
   pages!: EntityTable<Page, 'id'>;
-  tags!: EntityTable<Tag, 'id'>;
   settings!: EntityTable<SettingRecord, 'key'>;
   snapshots!: EntityTable<SafetySnapshot, 'id'>;
   drawings!: EntityTable<Drawing, 'id'>;
-  writingDays!: EntityTable<WritingDay, 'date'>;
   attachments!: EntityTable<Attachment, 'id'>;
   attachmentData!: EntityTable<AttachmentData, 'id'>;
   annotations!: EntityTable<Annotation, 'id'>;
-  decks!: EntityTable<Deck, 'id'>;
-  flashcards!: EntityTable<Flashcard, 'id'>;
-  reviewLogs!: EntityTable<ReviewLog, 'id'>;
+  pdfTexts!: EntityTable<PdfText, 'id'>;
 
   constructor(name = 'typenote') {
     super(name);
@@ -70,6 +66,37 @@ export class TypeNoteDB extends Dexie {
         // Nothing to convert: there were no flashcards before 0.7.0.
         await tx.table('flashcards').count();
       });
+    // 0.8.0, the revamp: a notepad, not a study app. Folders, tags, flashcards
+    // and the words-written log are removed. Notebooks that were in folders
+    // go to the shelf; pages that were in folders become loose pages. A page
+    // link becomes the text of its title. A new table keeps the text of each
+    // PDF, so search can find words in it.
+    this.version(6)
+      .stores({
+        notebooks: 'id, trashBatchId',
+        pages: 'id, notebookId, updatedAt, trashBatchId',
+        pdfTexts: 'id',
+        folders: null,
+        tags: null,
+        writingDays: null,
+        decks: null,
+        flashcards: null,
+        reviewLogs: null,
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('notebooks')
+          .toCollection()
+          .modify((notebook: Record<string, unknown>) => dropLegacyFields(notebook));
+        await tx
+          .table('pages')
+          .toCollection()
+          .modify((page: Record<string, unknown>) => {
+            dropLegacyFields(page);
+            page.content = convertLegacyDoc(page.content as DocNode);
+          });
+        await tx.table('settings').bulkDelete([...REMOVED_SETTING_KEYS]);
+      });
   }
 }
 
@@ -77,4 +104,4 @@ export class TypeNoteDB extends Dexie {
 export const db = new TypeNoteDB();
 
 /** Tables that hold user content, in the order used by backup and restore. */
-export const contentTables = () => [db.folders, db.notebooks, db.pages, db.tags, db.settings, db.drawings, db.writingDays, db.attachments, db.attachmentData, db.annotations, db.decks, db.flashcards, db.reviewLogs] as const;
+export const contentTables = () => [db.notebooks, db.pages, db.settings, db.drawings, db.attachments, db.attachmentData, db.annotations] as const;

@@ -4,6 +4,7 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -80,12 +81,53 @@ function pdfjsAssetsPlugin(base: string): Plugin {
 // TYPENOTE_BASE=/ for a root deployment such as Vercel.
 const base = process.env.TYPENOTE_BASE ?? '/typewriter/';
 
+/**
+ * Offline shell (Milestone 8). The service worker precaches the whole build,
+ * PDF.js's data files included, so every screen and the PDF reader open with
+ * no network. User data is in IndexedDB and never passes through the worker.
+ * 'prompt': a new version waits until the person chooses to reload, so an
+ * update never reloads the page in the middle of writing.
+ */
+function pwaPlugin(base: string) {
+  return VitePWA({
+    registerType: 'prompt',
+    injectRegister: false,
+    includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+    manifest: {
+      id: base,
+      name: 'TypeNote',
+      short_name: 'TypeNote',
+      description: 'Your personal digital writing atelier. Private, local-first notes.',
+      lang: 'en',
+      dir: 'ltr',
+      start_url: base,
+      scope: base,
+      display: 'standalone',
+      // The Classic theme's Ivory and Walnut (src/styles/tokens.css). The manifest cannot read CSS.
+      background_color: '#f5f0e6',
+      theme_color: '#795b43',
+      icons: [
+        { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+        { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    },
+    workbox: {
+      globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,ttf,wasm,bcmap,pfb,icc}'],
+      // Not .woff: every browser TypeNote supports uses .woff2. The PDF.js worker is about 1.3 MB.
+      maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      navigateFallback: `${base}index.html`,
+      cleanupOutdatedCaches: true,
+    },
+  });
+}
+
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 export default defineConfig({
   base,
   define: { __APP_VERSION__: JSON.stringify(version) },
-  plugins: [react(), tailwindcss(), cspPlugin(), pdfjsAssetsPlugin(base)],
+  plugins: [react(), tailwindcss(), cspPlugin(), pdfjsAssetsPlugin(base), pwaPlugin(base)],
   build: {
     // Fonts are always files: the Content Security Policy allows fonts from 'self' only, not data: URLs.
     // Without this, a font subset under 4 kB is inlined and then blocked.

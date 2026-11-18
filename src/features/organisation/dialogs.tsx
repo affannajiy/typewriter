@@ -1,14 +1,13 @@
-import { BookOpen, Folder as FolderIcon, House } from 'lucide-react';
+import { BookOpen, FileText } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button, cx } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { TextAreaField, TextField } from '@/components/ui/Field';
 import { MAX_NAME_LENGTH, byOrder } from '@/database/repositories/common';
-import { folderSubtreeIds } from '@/database/repositories/folders';
 import { DEFAULT_COVER_COLOUR, MAX_DESCRIPTION_LENGTH, type NotebookDetails } from '@/database/repositories/notebooks';
 import type { Workspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
-import { COVER_KINDS, type CoverKind, type Id, type ItemKind, NOTEBOOK_ICONS, type Notebook, type NotebookIcon, type PageLocation } from '@/types/models';
+import { COVER_KINDS, type CoverKind, NOTEBOOK_ICONS, type Notebook, type NotebookIcon, type PageLocation } from '@/types/models';
 import { isHexColour } from '@/utils/colour';
 import { NOTEBOOK_ICON_GLYPHS } from './covers';
 
@@ -172,62 +171,43 @@ function NotebookForm({ notebook, onClose, onSubmit }: { notebook?: Notebook; on
   );
 }
 
-/** A destination in the Move dialog. */
-type Destination = { key: string; label: string; depth: number; kind: 'root' | 'folder' | 'notebook'; location: PageLocation };
+/** A destination in the Move dialog: a notebook, or the loose pages. */
+type Destination = { key: string; label: string; kind: 'loose' | 'notebook'; location: PageLocation };
 
-/** Flatten the workspace into an indented list of places the item may move to. */
-export function listDestinations(workspace: Workspace, kind: ItemKind, itemId: Id): Destination[] {
-  const blocked = kind === 'folder' ? folderSubtreeIds(itemId, workspace.folders) : new Set<Id>();
-  const out: Destination[] = [{ key: 'root', label: t.organise.topLevel, depth: 0, kind: 'root', location: { folderId: null, notebookId: null } }];
-  const addNotebooks = (folderId: Id | null, depth: number) => {
-    if (kind !== 'page') return;
-    for (const n of workspace.notebooks.filter((nb) => nb.folderId === folderId).sort(byOrder)) {
-      out.push({ key: `n:${n.id}`, label: n.name, depth, kind: 'notebook', location: { folderId: null, notebookId: n.id } });
-    }
-  };
-  const addFolders = (parentId: Id | null, depth: number) => {
-    for (const f of workspace.folders.filter((fo) => fo.parentId === parentId).sort(byOrder)) {
-      if (blocked.has(f.id)) continue;
-      out.push({ key: `f:${f.id}`, label: f.name, depth, kind: 'folder', location: { folderId: f.id, notebookId: null } });
-      addFolders(f.id, depth + 1);
-      addNotebooks(f.id, depth + 1);
-    }
-  };
-  addFolders(null, 1);
-  addNotebooks(null, 1);
-  return out;
+/** The places a page may move to: out of every notebook, or into one. */
+export function listDestinations(workspace: Workspace): Destination[] {
+  return [
+    { key: 'loose', label: t.organise.topLevel, kind: 'loose', location: { notebookId: null } },
+    ...[...workspace.notebooks].sort(byOrder).map((n): Destination => ({ key: `n:${n.id}`, label: n.name, kind: 'notebook', location: { notebookId: n.id } })),
+  ];
 }
 
-const destinationIcons = { root: House, folder: FolderIcon, notebook: BookOpen };
+const destinationIcons = { loose: FileText, notebook: BookOpen };
 
 /** Choose a new location. This moves the item; it does not create a reference. */
-export function MoveDialog({ open, onClose, workspace, kind, itemId, itemName, current, onMove }: {
+export function MoveDialog({ open, onClose, workspace, itemName, current, onMove }: {
   open: boolean;
   onClose: () => void;
   workspace: Workspace;
-  kind: ItemKind;
-  itemId: Id;
   itemName: string;
   current: PageLocation;
   onMove: (location: PageLocation) => void;
 }) {
   return (
     <Dialog open={open} onClose={onClose} title={t.organise.moveTitle(itemName)}>
-      <MoveForm workspace={workspace} kind={kind} itemId={itemId} current={current} onClose={onClose} onMove={onMove} />
+      <MoveForm workspace={workspace} current={current} onClose={onClose} onMove={onMove} />
     </Dialog>
   );
 }
 
-function MoveForm({ workspace, kind, itemId, current, onClose, onMove }: {
+function MoveForm({ workspace, current, onClose, onMove }: {
   workspace: Workspace;
-  kind: ItemKind;
-  itemId: Id;
   current: PageLocation;
   onClose: () => void;
   onMove: (location: PageLocation) => void;
 }) {
-  const destinations = useMemo(() => listDestinations(workspace, kind, itemId), [workspace, kind, itemId]);
-  const currentKey = current.notebookId ? `n:${current.notebookId}` : current.folderId ? `f:${current.folderId}` : 'root';
+  const destinations = useMemo(() => listDestinations(workspace), [workspace]);
+  const currentKey = current.notebookId ? `n:${current.notebookId}` : 'loose';
   const [selected, setSelected] = useState(currentKey);
   const target = destinations.find((d) => d.key === selected);
 
@@ -250,7 +230,6 @@ function MoveForm({ workspace, kind, itemId, current, onClose, onMove }: {
                 key={destination.key}
                 data-clickable
                 className={cx('flex min-h-10 items-center gap-2 rounded px-2 text-sm text-ink hover:bg-accent-soft has-checked:bg-accent-soft has-checked:font-semibold pointer-coarse:min-h-11')}
-                style={{ paddingInlineStart: `${0.5 + destination.depth * 1.25}rem` }}
               >
                 <input type="radio" name="destination" value={destination.key} checked={selected === destination.key} onChange={() => setSelected(destination.key)} className="accent-(--tn-accent)" />
                 <Icon size={16} aria-hidden className="shrink-0 text-muted" />

@@ -26,6 +26,8 @@ export interface PdfDocument {
   renderPage: (page: number, canvas: HTMLCanvasElement, scale: number) => PdfRender;
   /** Lays the page's text over it, invisible but selectable, in `container`. */
   renderText: (page: number, container: HTMLElement, scale: number) => PdfRender;
+  /** The text of every page, in order, for search. A page without text gives an empty string. */
+  extractText: () => Promise<string[]>;
   destroy: () => void;
 }
 
@@ -104,6 +106,21 @@ export async function openPdf(bytes: ArrayBuffer): Promise<PdfDocument> {
         }
       })();
       return { done, cancel: () => cancel() };
+    },
+    extractText: async () => {
+      const pages: string[] = [];
+      for (let number = 1; number <= doc.numPages; number++) {
+        const page = await doc.getPage(number);
+        const content = await page.getTextContent();
+        let text = '';
+        for (const item of content.items) {
+          if (!('str' in item)) continue;
+          text += item.str + (item.hasEOL ? '\n' : '');
+        }
+        pages.push(text);
+        page.cleanup();
+      }
+      return pages;
     },
     destroy: () => void task.destroy(),
   };

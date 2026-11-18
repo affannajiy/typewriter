@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -6,11 +6,8 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { db } from '@/database/db';
 import { createPage } from '@/database/repositories/pages';
 import { readSettings, writeSetting } from '@/database/repositories/settings';
-import { WritingStats } from '@/features/dashboard/WritingStats';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { DEFAULT_SETTINGS, resolveSettings } from '@/features/settings/model';
-import type { Page } from '@/types/models';
-import { addDays, dayKey } from '@/utils/dates';
 import PageScreen from './PageScreen';
 
 // jsdom has no layout. The editor asks for these when it scrolls the caret into view.
@@ -46,20 +43,20 @@ async function openPage() {
 }
 
 describe('writing settings on the page', () => {
-  it('default to Lora, medium, normal spacing and plain paper, and refuse unknown values', () => {
-    expect(DEFAULT_SETTINGS).toMatchObject({ editorFont: 'serif', editorSize: 'medium', editorLeading: 'normal', editorWidth: 'normal', paperStyle: 'plain', focusDim: true, dailyGoal: 0 });
-    expect(resolveSettings({ editorFont: 'comic', editorSize: 7, paperStyle: 'music', dailyGoal: -1, focusDim: 'yes' })).toMatchObject({ editorFont: 'serif', editorSize: 'medium', paperStyle: 'plain', dailyGoal: 0, focusDim: true });
-    expect(resolveSettings({ dailyGoal: 20_001 }).dailyGoal).toBe(0);
-    expect(resolveSettings({ dailyGoal: 750 }).dailyGoal).toBe(750);
+  it('default to the typewriter: mono type and sounds on; medium, normal spacing, plain paper; and refuse unknown values', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({ editorFont: 'mono', typingSound: true, editorSize: 'medium', editorLeading: 'normal', editorWidth: 'normal', paperStyle: 'plain', focusDim: true });
+    expect(resolveSettings({ editorFont: 'comic', editorSize: 7, paperStyle: 'music', focusDim: 'yes', typingSound: 'loud' })).toMatchObject({ editorFont: 'mono', editorSize: 'medium', paperStyle: 'plain', focusDim: true, typingSound: true });
+    // Settings removed in 0.8.0 are ignored when they are still stored.
+    expect(resolveSettings({ dailyGoal: 750, studyRetention: 90 })).not.toHaveProperty('dailyGoal');
   });
 
   it('are applied to the page as they change', async () => {
     const { article } = await openPage();
-    expect(article.dataset).toMatchObject({ font: 'serif', size: 'medium', leading: 'normal', width: 'normal', paper: 'plain' });
-    await writeSetting('editorFont', 'mono');
+    expect(article.dataset).toMatchObject({ font: 'mono', size: 'medium', leading: 'normal', width: 'normal', paper: 'plain' });
+    await writeSetting('editorFont', 'serif');
     await writeSetting('paperStyle', 'lined');
     await writeSetting('editorLeading', 'loose');
-    await waitFor(() => expect(article.dataset).toMatchObject({ font: 'mono', paper: 'lined', leading: 'loose' }));
+    await waitFor(() => expect(article.dataset).toMatchObject({ font: 'serif', paper: 'lined', leading: 'loose' }));
   });
 });
 
@@ -112,59 +109,12 @@ describe('the settings screen', () => {
 
   it('stores the typeface, ruling and machine, and shows a sample in them', async () => {
     renderSettings();
-    await userEvent.click(screen.getByRole('radio', { name: 'Typewriter' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Book' }));
     await userEvent.click(screen.getByRole('radio', { name: 'Squared' }));
     await userEvent.click(screen.getByRole('radio', { name: 'Office' }));
-    await waitFor(async () => expect(resolveSettings(await readSettings())).toMatchObject({ editorFont: 'mono', paperStyle: 'grid', soundMachine: 'office' }));
+    await waitFor(async () => expect(resolveSettings(await readSettings())).toMatchObject({ editorFont: 'serif', paperStyle: 'grid', soundMachine: 'office' }));
     const sample = screen.getByRole('img', { name: 'Sample of the page text' });
-    await waitFor(() => expect(sample.dataset).toMatchObject({ font: 'mono', paper: 'grid' }));
-  });
-
-  it('stores a daily goal only when it is a whole number in range', async () => {
-    renderSettings();
-    const field = screen.getByRole('spinbutton', { name: 'Daily word goal' });
-    await userEvent.clear(field);
-    await userEvent.type(field, '500');
-    await waitFor(async () => expect(resolveSettings(await readSettings()).dailyGoal).toBe(500));
-    await userEvent.clear(field);
-    await userEvent.type(field, '99999');
-    expect(field).toHaveAttribute('aria-invalid', 'true');
-    expect(field).toHaveValue(99999);
-    expect(resolveSettings(await readSettings()).dailyGoal).toBe(9999);
-    // Leaving the field puts the stored goal back.
-    await userEvent.tab();
-    await waitFor(() => expect(field).toHaveValue(9999));
-    expect(field).toHaveAttribute('aria-invalid', 'false');
+    await waitFor(() => expect(sample.dataset).toMatchObject({ font: 'serif', paper: 'grid' }));
   });
 });
 
-describe('the writing summary on the desk', () => {
-  it('shows today against the goal, the streak, the words in pages and seven days with text for each', async () => {
-    const today = new Date();
-    await db.writingDays.bulkPut([
-      { date: dayKey(today), words: 120, updatedAt: 1 },
-      { date: dayKey(addDays(today, -1)), words: 300, updatedAt: 1 },
-      { date: dayKey(addDays(today, -3)), words: 50, updatedAt: 1 },
-    ]);
-    const pages = [{ plainText: 'one two three' }, { plainText: 'four five' }] as Page[];
-    render(<WritingStats pages={pages} goal={500} />);
-
-    expect(await screen.findByText('120 words')).toBeInTheDocument();
-    expect(screen.getByText('120 of 500 words')).toBeInTheDocument();
-    expect(screen.getByText('2 days')).toBeInTheDocument();
-    expect(screen.getByText('5 words')).toBeInTheDocument();
-    const week = within(screen.getByRole('list', { name: 'Last seven days' })).getAllByRole('listitem');
-    expect(week).toHaveLength(7);
-    expect(week.at(-1)).toHaveTextContent(/: 120 words/);
-    expect(week.at(-2)).toHaveTextContent(/: 300 words/);
-    expect(week.at(-3)).toHaveTextContent(/: 0 words/);
-  });
-
-  it('says how to set a goal when there is none, and marks a goal reached', async () => {
-    await db.writingDays.put({ date: dayKey(), words: 800, updatedAt: 1 });
-    const { rerender } = render(<WritingStats pages={[]} goal={0} />);
-    expect(await screen.findByText(/Set a daily goal/)).toBeInTheDocument();
-    rerender(<WritingStats pages={[]} goal={500} />);
-    expect(screen.getByText(/Goal reached/)).toBeInTheDocument();
-  });
-});

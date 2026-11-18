@@ -1,20 +1,21 @@
 # Development Roadmap and Implementation Checklist
 
-**Last updated:** 2026-11-17 · **Version:** 0.7.0
+**Last updated:** 2026-11-18 · **Version:** 0.8.0, the revamp (Milestone 8 in progress)
 
-Status words: **Not started**, **In progress**, **Implemented** (works, not yet covered by an
-automated test), **Tested** (works and has automated tests), **Blocked**.
+Status words: **Not started**, **In progress**, **Implemented** (works, no automated test yet), **Tested** (works and has automated tests), **Blocked**, **Removed** (removed in 0.8.0, D18).
+
+This checklist shows the current product. Rows for features that 0.8.0 removed are collapsed into one "Removed" row per milestone. The 0.7.0 version of this file in git history has their full rows.
 
 | Milestone | State |
 | --- | --- |
-| 1 Foundation | Done, with the gaps listed below |
-| 2 Database and organisation | Done, with the gaps listed below |
-| 3 Writing editor | Done, with the gaps listed below |
-| 4 Drawing | Done, with the gaps listed below |
-| 5 Writing atmosphere | Done, with the gaps listed below |
-| 6 PDF and audio | Done, with the gaps listed below |
-| 7 Study features | Done, with the gaps listed below |
-| 8 Polish and deployment | Not started (next; the deploy workflow exists but has never run) |
+| 1 Foundation | Done, with the gaps below |
+| 2 Database and organization | Done, with the gaps below |
+| 3 Writing editor | Done, with the gaps below |
+| 4 Drawing | Done, with the gaps below |
+| 5 Writing atmosphere | Done, with the gaps below |
+| 6 PDF and audio | Done, with the gaps below |
+| 7 Study features | Done. 0.8.0 removed all except equations. |
+| 8 Polish and deployment | In progress. Done: offline, the 0.8.0 revamp. To do: deployment, bundle size, accessibility. |
 
 ## Milestone 1 — Foundation
 
@@ -24,81 +25,74 @@ automated test), **Tested** (works and has automated tests), **Blocked**.
 | Tailwind CSS | Tested | v4, mapped to tokens |
 | Design tokens | Tested | Contrast test for all six themes |
 | Themes: Classic Atelier, Dark Academia, Minimalist, Forest, Midnight, Rose | Tested | Plus "Match system" |
-| Custom accent colour | Tested | Readable text colour is computed; a weak accent shows a warning |
-| Interface density, animation toggle, reduced motion | Implemented | Applied through tokens; no visual regression test |
-| Responsive layout: sidebar, drawer, bottom bar | Tested | No-horizontal-scroll test on desktop and a 412 px phone |
+| Custom accent color | Tested | The app calculates a legible text color. A weak accent shows a warning. |
+| Interface density, animation toggle, reduced motion | Implemented | Applied through tokens. No visual regression test. |
+| Responsive layout: icon rail, phone top bar and bottom bar | Tested | No-horizontal-scroll test on desktop and on a 412 px phone |
 | Routing | Tested | Hash routes, deep link and reload under the base path |
-| Components: Button, IconButton, TextField, TextArea, SearchField, Card, Dialog, ConfirmDialog, Menu, Toast, Breadcrumbs, Segmented control, EmptyState, status indicator | Tested / Implemented | Button, Menu and ConfirmDialog have component tests. SearchField is built but not used: search lives in the command palette |
-| Components: Toolbar, Content blocks | Tested | Arrived with the editor (Milestone 3) |
+| Components: Button, IconButton, TextField, TextArea, SearchField, Card, Dialog, ConfirmDialog, Menu, Toast, Breadcrumbs, Segmented control, EmptyState, status indicator | Tested / Implemented | Button, Menu and ConfirmDialog have component tests |
+| Components: Toolbar, Content blocks | Tested | Came with the editor (Milestone 3) |
 | Components: Tabs, Tooltip, Context menu, Floating action menu | Not started | Tooltips are native `title` for now |
-| Resizable panels | Not started | Sidebar collapses to icons instead |
-| Typography settings (font, size, line height, width) | Tested | Milestone 5. App-wide, not per notebook |
-| Fonts bundled locally | Implemented | Inter, Lora, Cormorant Garamond. JetBrains Mono comes with code blocks |
-| Centralised strings, logical CSS properties, `lang` and `dir` | Implemented | English only. RTL not tested |
+| Resizable panels | Not started | |
+| Typography settings (font, size, line height, width) | Tested | Milestone 5. App-wide, not per notebook. |
+| Fonts bundled locally | Implemented | Inter, Lora, Cormorant Garamond. JetBrains Mono comes with code blocks. |
+| Central strings, logical CSS properties, `lang` and `dir` | Implemented | English only. RTL not tested. |
 
-## Milestone 2 — Database and organisation
+## Milestone 2 — Database and organization
 
 | Item | Status | Note |
 | --- | --- | --- |
 | Dexie schema v1, repository layer | Tested | |
-| Migrations | Tested | Version 2 (drawings), 3 (notebook icons, words written) and 4 (files, highlights); opening a version 1, 2 and 3 database is tested |
-| Folders: create, rename, nest, move, reorder | Tested | Cycle prevention tested |
-| Notebooks: create, edit details, cover colour, move, reorder, favourite, tags | Tested | |
-| Pages: create anywhere, move, reorder, favourite, pin, tags | Tested | |
-| Tags: create, rename, recolour, delete, browse by tag | Tested (repository) / Implemented (screen) | |
-| Favourites and pinned on the dashboard | Implemented | |
-| Recently opened, recently modified | Implemented | |
-| Autosave with honest status | Tested | "Saved" only after the write resolves; failure keeps the text and offers retry |
-| Force save (Ctrl/Cmd + S), save on tab hide, warn on close while unsaved | Implemented | Not covered by an automated test |
-| Trash: subtree delete, undo, restore, permanent delete with confirmation | Tested | Unit and end-to-end |
+| Migrations | Tested | Each version step has a test that opens a database of the previous version (DATA_MODEL.md, Migrations) |
+| Notebooks: create, edit details, cover color, move, reorder, favorite | Tested | |
+| Pages: create in a notebook or loose, move, reorder, favorite, pin | Tested | |
+| Autosave with honest status | Tested | "Saved" only after the write resolves. A failure keeps the text and offers retry. |
+| Force save (Ctrl/Cmd + S), save on tab hide, warning on close while unsaved | Implemented | No automated test |
+| Trash: delete a notebook with its pages, undo, restore, permanent delete with confirmation | Tested | Unit and end-to-end |
 | Backup: full JSON export | Tested | End-to-end download test |
-| Restore: validation, duplicate detection, three modes, atomic, undo for replace | Tested | Includes a mid-restore failure test |
-| Storage usage, persistence request, low-storage warning | Implemented | Depends on the browser; not automated |
-| Storage unavailable screen, error boundary | Implemented | Not automated |
+| Restore: validation, duplicate detection, three modes, atomic, undo for replace | Tested | Includes a test with a failure in the middle of a restore |
+| Storage usage, persistence request, low-storage warning | Implemented | Depends on the browser. Not automated. |
+| Storage-unavailable screen, error boundary | Implemented | Not automated |
 | Drag and drop | Not started | "Move to…" and "Move up/down" are the working alternative |
-| Notebook icon and cover finish | Tested | Milestone 5. A separate notebook accent colour was not added: the cover colour is the notebook's colour |
+| Notebook icon and cover finish | Tested | Milestone 5. No separate notebook accent color: the cover color is the notebook color. |
 | Bookshelf and list views | Implemented | |
-| Writing statistics on the dashboard | Tested | Milestone 5 |
-| Study corner on the dashboard | Tested | Milestone 7. Cards waiting today, with a way in. End-to-end checks "nothing to study" |
-| Dashboard customisation, quick capture | Not started | Milestone 8 |
-| Global search | Tested | See Milestone 3 |
 | Templates | Not started | Release 1.1 |
-| Markdown export, PDF export | Not started | The editor's document model now exists |
-| Backup reminders | Not started | Last backup date is shown in Settings |
+| Markdown export, PDF export | Not started | The editor document model exists now |
+| Backup reminders | Not started | Settings shows the date of the last backup |
+| Removed | Removed | Folders (nest, move, cycle checks), tags, dashboard (favorites, pinned, recent, writing stats, study corner, customization, quick capture) |
 
-**Acceptance (create, organise, save, close, reopen without loss):** met, proven by the
-end-to-end test "a workspace survives closing and reopening the app".
+**Acceptance (create, organize, save, close, reopen without loss):** met. Proof: the end-to-end test "a workspace survives closing and reopening the app".
 
 ## Milestone 3 — Writing editor
 
 | Item | Status | Note |
 | --- | --- | --- |
-| Tiptap 3 in the page screen | Tested | Replaces the textarea. Pages written before load unchanged, with no migration (unit test) |
-| Opening a page is not an edit | Tested | The editor reports no change on opening, so `updatedAt` and `rev` stay |
-| A page this version cannot show is read-only | Tested (the check) / Implemented (the screen) | Unknown node or mark types are never dropped and saved over. The stored text is shown instead |
+| Tiptap 3 in the page screen | Tested | Replaces the textarea. Old pages load unchanged, with no migration (unit test). |
+| Opening a page is not an edit | Tested | The editor reports no change on open, so `updatedAt` and `rev` stay |
+| A page that this version cannot show is read-only | Tested (the check) / Implemented (the screen) | Unknown node or mark types are never dropped and saved over. The stored text shows instead. |
 | Formatting: headings 1 to 3, bold, italic, underline, strikethrough, inline code, bulleted, numbered and check lists, quote, code block, divider | Tested | Toolbar, shortcuts, and typed shortcuts such as `- ` and `# ` |
-| Toolbar | Tested | One tab stop, arrow keys inside. Scrolls sideways on a narrow screen |
-| Stable block IDs | Tested | Kept through edits, moves, type changes, undo and reload; a split or a copy gets a new ID |
-| Block menu: move up and down, duplicate, delete, turn into | Tested | Acts on the top-level block that holds the caret. Delete offers Undo |
-| Slash-command menu | Tested | End-to-end and unit. Off inside code |
-| Shortcuts | Tested (bold, move block, undo, Ctrl/Cmd + K) / Implemented (the rest) | The others come from Tiptap and are shown in the toolbar's tooltips and in the palette |
+| Toolbar | Tested | One tab stop, arrow keys inside. Scrolls sideways on a narrow screen. |
+| Stable block IDs | Tested | Kept through edits, moves, type changes, undo and reload. A split or a copy gets a new ID. |
+| Block menu: move up and down, duplicate, delete, turn into | Tested | Acts on the top-level block that holds the caret. Delete offers Undo. |
+| Slash-command menu | Tested | End-to-end and unit. Off inside code. |
+| Shortcuts | Tested (bold, move block, undo, Ctrl/Cmd + K) / Implemented (the rest) | The others come from Tiptap. The toolbar tooltips and the palette show them. |
 | Command palette (Ctrl/Cmd + K) | Tested | Search, go to a screen, new page, formatting commands for the open page |
-| Global search over names and page text | Tested | Every word must match; case and accents ignored; name matches first. The Trash is not searched |
-| Continuous and paginated layouts | Tested | Chosen per page, under the page. Stored in `pages.layout` |
-| Paper size (A4, Letter, A5) and margins (narrow, normal, wide) | Tested | In Settings. One choice for all pages |
+| Continuous and paginated layouts | Tested | Chosen per page, below the page. Stored in `pages.layout`. |
+| Paper size (A4, Letter, A5) and margins (narrow, normal, wide) | Tested | In Settings. One choice for all pages. |
 | Typewriter sounds in the editor | Tested | Same end-to-end journey as before, now through the editor |
-| ESLint with accessibility rules | Tested | `npm run lint`, also in CI. jsx-a11y and React hooks rules. Clean |
+| ESLint with accessibility rules | Tested | `npm run lint`, also in CI. jsx-a11y and React hooks rules. Clean. |
 | JetBrains Mono for code | Implemented | Bundled locally |
 
-**Gaps, on purpose or still owed:**
+Search: see 0.8.0 below.
 
-- **Tables and web links** are not in the editor. Pasted addresses stay plain text. Links between pages arrived in Milestone 7.
-- **A block taller than one sheet is not split** in the paginated layout: it runs over the page edge. Page breaks fall between blocks only.
-- **Paper size and margins are one setting for all pages**, not per page. There is no print or PDF output yet, so the sheets are a writing view.
-- On a phone the sheet is scaled to the screen but the text is not, so a sheet holds less text than on paper.
+**Gaps (on purpose or still to do):**
+
+- **No tables or web links** in the editor. Pasted addresses stay plain text.
+- **A block taller than one sheet is not split** in the paginated layout. It goes past the page edge. Page breaks occur only between blocks.
+- **Paper size and margins are one setting for all pages.** There is no print or PDF output yet, so the sheets are only a writing view.
+- On a phone the sheet scales to the screen but the text does not. Thus a sheet holds less text than on paper.
 - The block menu works on top-level blocks (a whole list, not one list item). There is no drag handle.
-- **Custom key bindings** are not built.
-- Search scans the workspace in memory on each key press. Measure with a large workspace before Milestone 8 (see ARCHITECTURE.md, D3 and D12). Matches are not highlighted in the snippet.
+- **No custom key bindings.**
+- Search scans the workspace in memory on each key press. Measure with a large workspace before the end of Milestone 8 (ARCHITECTURE.md, D3 and D12).
 - ESLint reads TypeScript through Babel, so it has no type-aware rules. typescript-eslint does not support TypeScript 7 yet.
 - Not run: input methods (IME), real phone keyboards, Firefox, Safari, screen readers.
 
@@ -106,158 +100,151 @@ end-to-end test "a workspace survives closing and reopening the app".
 
 | Item | Status | Note |
 | --- | --- | --- |
-| Library evaluation: `drawfn`, tldraw, Excalidraw, custom on perfect-freehand | Done | Custom engine on perfect-freehand. Reasons and table in ARCHITECTURE.md, D13 |
+| Library comparison: `drawfn`, tldraw, Excalidraw, custom on perfect-freehand | Done | Custom engine on perfect-freehand. Reasons and table: ARCHITECTURE.md, D13. |
 | Schema v2: `drawings` table, with migration test | Tested | A version 1 database opens with its data intact |
-| Strokes stored as editable data (points with pressure, tool, ink, width) | Tested | Not pixels. Saved through the same honest autosaver as pages |
-| Drawing block in the page: slash menu, toolbar, command palette; preview; Enter or button opens it | Tested | Unit and end-to-end. The block adds no words to the page |
-| Full-screen drawing editor | Tested | Native `<dialog>`. Escape drops a selection, then closes after the last write |
-| Pen and highlighter, five inks, three widths | Tested | Inks are theme tokens with a contrast test; the highlighter is translucent and sits under the pen |
-| Stylus pressure; palm rejection | Tested (palm rejection) / Implemented (pressure) | Pressure from the pen, simulated from speed otherwise. After a pen is used, touch no longer draws (component test with simulated pen events). Not tried with a real stylus |
+| Strokes stored as editable data (points with pressure, tool, ink, width) | Tested | Not pixels. Saved through the same honest autosaver as pages. |
+| Drawing block in the page: slash menu, toolbar, command palette, preview. Enter or a button opens it. | Tested | Unit and end-to-end. The block adds no words to the page. |
+| Full-screen drawing editor | Tested | Native `<dialog>`. Escape clears a selection, then closes after the last write. |
+| Pen and highlighter, five inks, three widths | Tested | Inks are theme tokens with a contrast test. The highlighter is translucent and goes under the pen. |
+| Stylus pressure, palm rejection | Tested (palm rejection) / Implemented (pressure) | Pressure from the pen, otherwise simulated from speed. After a pen is used, touch does not draw (component test with simulated pen events). Not tried with a real stylus. |
 | Partial erase | Tested | A stroke cut in the middle becomes two |
-| Lasso select, move, resize, delete | Tested (select, delete, the move and scale maths) / Implemented (dragging to move and resize) | Dragging was checked by hand in Chromium, not by an automated test |
+| Lasso select, move, resize, delete | Tested (select, delete, move and scale math) / Implemented (drag to move and resize) | Drag examined by hand in Chromium. No automated test. |
 | Undo and redo in the drawing | Tested | Buttons and Ctrl/Cmd + Z, Ctrl/Cmd + Shift + Z, Ctrl/Cmd + Y |
-| Duplicate or paste a drawing block | Tested (duplicate) / Implemented (paste from another page) | The copy gets its own strokes |
-| Drawing deleted with its page | Tested | Only when the page is deleted permanently. Trash and restore keep it |
-| Backup and restore of drawings | Tested | Old backups without drawings still restore. Strokes validated like any untrusted input |
-| PNG export | Tested | End-to-end download. Twice the canvas size, on the theme's paper colour |
+| Duplicate or paste a drawing block | Tested (duplicate) / Implemented (paste from a different page) | The copy gets its own strokes |
+| Drawing deleted with its page | Tested | Only on permanent delete of the page. Trash and restore keep it. |
+| Backup and restore of drawings | Tested | Old backups without drawings still restore. Strokes validated like all untrusted input. |
+| PNG export | Tested | End-to-end download. Twice the canvas size, on the paper color of the theme. |
 | "Add space below" | Tested | Canvas grows by 300 units, up to 8,000 |
 
-**Gaps, on purpose or still owed:**
+**Gaps (on purpose or still to do):**
 
-- **Drawing happens full screen**, not on the page itself. The page shows a preview.
+- **Drawing happens full screen**, not on the page. The page shows a preview.
 - No shapes, straight lines, text boxes, images or zoom on the canvas. No SVG export or import.
-- **Drawing needs a pointer.** Keyboard users can open a drawing, undo, redo, delete a selection
-  and download it, but cannot draw. The canvas is announced with its number of strokes only.
-- Not tried with a real stylus (Apple Pencil, S Pen, Wacom), or on iOS Safari. Pressure and palm
-  rejection are tested with simulated pen events only.
-- No performance budget measured for a drawing with thousands of strokes. Each stroke's outline is
-  computed once and kept while it does not change.
-- A drawing whose block was deleted stays until its page is deleted permanently (needed for undo).
+- **Drawing needs a pointer.** Keyboard users can open a drawing, undo, redo, delete a selection and download it, but cannot draw. The canvas announces only its number of strokes.
+- Not tried with a real stylus (Apple Pencil, S Pen, Wacom) or on iOS Safari. Pressure and palm rejection have tests with simulated pen events only.
+- No performance budget measured for a drawing with thousands of strokes. The outline of each stroke is calculated once and kept while the stroke does not change.
+- A drawing whose block was deleted stays until its page is deleted permanently (necessary for undo).
 - The selection is a box with one resize corner. No rotation.
 
 ## Milestone 5 — Writing atmosphere
 
 | Item | Status | Note |
 | --- | --- | --- |
-| Typewriter sounds: key, space, backspace, bell, carriage return | Tested | Synthesised with Web Audio, no audio files. Off by default. Measured, not judged by ear |
-| Carriage return with bell on Enter and when a line wraps | Tested | End-to-end test in a real browser. The caret's place is measured in a hidden copy of the paragraph |
-| Bell setting: every new line, before the line ends (margin bell), off | Tested (default and validation) / Implemented (the two other modes) | |
-| Shift down and up, paper feed when a page opens | Implemented | Sounds are unit-tested; the triggers are not automated |
+| Typewriter sounds: key, space, backspace, bell, carriage return | Tested | Synthesized with Web Audio, no audio files. On by default since 0.8.0. Measured, not judged by ear. |
+| Carriage return with bell on Enter and when a line wraps | Tested | End-to-end test in a real browser. The caret position comes from the editor (`coordsAtPos`). |
+| Bell setting: every new line, before the line ends (margin bell), off | Tested (default and validation) / Implemented (the other two modes) | |
+| Shift down and up, paper feed when a page opens | Implemented | The sounds have unit tests. The triggers are not automated. |
 | Sound on/off on the page, volume and sample in Settings | Tested | |
-| Sound machines: desk, portable, office | Tested | Parameter sets for the same synthesiser: pitch, mass, ring time, body, carriage length, bell. Chosen in Settings. Not judged by ear |
-| Typography: typeface (Lora, Inter, JetBrains Mono), size, line spacing, column width | Tested | Settings → Writing, with a live sample. Unit, component and end-to-end |
-| Paper ruling: plain, lined, squared, dotted | Tested | In both layouts. Every block is a whole number of lines on ruled paper, so text stays on the rules (end-to-end measures it) |
-| Focus mode | Tested | Button under the page or Ctrl/Cmd + Shift + F; Escape leaves. Hides the app around the page and the toolbar; can fade every block but the current one |
+| Sound machines: desk, portable, office | Tested | Parameter sets for the same synthesizer: pitch, mass, ring time, body, carriage length, bell. Chosen in Settings. Not judged by ear. |
+| Typography: typeface (Lora, Inter, JetBrains Mono), size, line spacing, column width | Tested | Settings → Writing, with a live sample. Unit, component and end-to-end. |
+| Paper ruling: plain, lined, squared, dotted | Tested | In both layouts. On ruled paper each block is a whole number of lines, so the text stays on the rules (end-to-end measures it). |
+| Focus mode | Tested | Button below the page or Ctrl/Cmd + Shift + F. Escape leaves. Hides the app around the page, and the toolbar. Can fade all blocks except the current one. |
 | Notebook covers: five finishes and twelve icons | Tested | Schema version 3 adds `icon` |
-| Words written: today, daily goal, streak, last seven days, words in pages | Tested | Counted in the page save transaction. Schema version 3 adds `writingDays` |
+| Removed | Removed | Words written (today, daily goal, streak, last seven days) and its `writingDays` table |
 
-**Gaps, on purpose or still owed:**
+**Gaps (on purpose or still to do):**
 
 - **Settings are app-wide.** Typeface, ruling and paper are not chosen per notebook or per page.
-- **Words written is "words added".** A save that shortens a page adds nothing, and text retyped
-  after a deletion counts again. Words written before 0.5.0 are not known. Counted per device:
-  a backup carries the days, but two devices do not add up.
-- On ruled paper, heading sizes are kept but their line height is a whole number of lines, so
-  headings sit a little looser than on plain paper. A block type added later must be given
-  whole-line heights too (ARCHITECTURE.md, D14).
+- On ruled paper, headings keep their size, but their line height is a whole number of lines. Thus headings are a little looser than on plain paper. A new block type must also get whole-line heights (ARCHITECTURE.md, D14).
 - Focus mode does not keep the caret line in the middle of the screen (no "typewriter scrolling").
-- No cover images, title position on the cover, or custom paper colours. Cover patterns are CSS.
-- The sound machines were tuned by numbers, not by ear, like the first one.
-- The faded blocks in focus mode have less contrast than WCAG asks for text. That is the purpose of
-  the setting, and "Keep all blocks" turns it off.
-
-Since Milestone 3 the sounds follow the editor: the edit is taken from the browser's `beforeinput`
-event (or from the key, for Enter and the delete keys), and the caret is measured from the editor
-(`coordsAtPos`).
+- No cover images, title position on the cover, or custom paper colors. Cover patterns are CSS.
+- The sound machines were tuned by numbers, not by ear.
+- The faded blocks in focus mode have less contrast than WCAG asks for text. That is the purpose of the setting. "Keep all blocks" turns it off.
 
 ## Milestone 6 — PDF and audio
 
 | Item | Status | Note |
 | --- | --- | --- |
-| Schema v4: `attachments`, `attachmentData`, `annotations`, with migration test | Tested | A version 3 database opens with its pages and words-written days intact |
-| Files stored on the device, bytes apart from details | Tested | Listing files never loads their bytes. 100 MB per file. Type and size checked; a "PDF" must start like one |
-| PDF block: `/pdf`, toolbar, palette; choose a file; name, pages and size; Open, or Enter on the block | Tested | Unit and end-to-end. PDF.js must open the file, or it is refused with a message |
-| PDF reader (PDF.js 6.5) | Tested | Its own screen, `#/file/<id>`. Pages painted only near the screen and released far from it; selectable text layer; fit to width, zoom 50 to 300 %; go to page by number; download |
-| Highlights in four colours, with a note on each | Tested | Select text, choose a colour. Stored as fractions of the page, so they stay on the words at any zoom (end-to-end checks it after zooming). Notes save as you type, "Note saved" after the write. Delete has Undo |
-| Recording block: `/record`; record, pause, resume, stop and save | Tested | Unit with a stand-in recorder; end-to-end with Chromium's stand-in microphone. Opus in WebM or Ogg, AAC in MP4 on Safari, 64 kbit/s. Stops itself at 100 MB |
-| A recording running when its block goes is saved in Files; closing the tab asks first | Implemented | Not automated |
-| Sound file instead of a recording | Tested (component) | Length read by the browser when it can tell |
-| Player for recordings | Tested | Plays from the stored bytes through a blob: URL; end-to-end checks that it decodes under the Content Security Policy |
-| Files screen ("audio library"): all PDFs and recordings, filter, where each is used, play, open, rename, download | Tested | Component and end-to-end |
-| Deleting files | Tested | From Files, only when no page uses it, after a confirmation. With the last page that used it, when that page is deleted permanently. Removing the block keeps the file, so undo works |
-| Backups with files (format 2) | Tested | Bytes as base64; checked like every record (type, size, bytes match, PDF signature, highlights on known files). A backup over 400 MB is refused when made, not when restored. Format 1 files still restore |
-| PDF.js data files served from the app | Tested | Fonts, character maps, colour profiles and image decoders copied into `dist/pdfjs/` (3.2 MB). No other site is contacted |
+| Schema v4: `attachments`, `attachmentData`, `annotations`, with migration test | Tested | A version 3 database opens with its pages intact |
+| Files stored on the device, bytes separate from details | Tested | A file list never loads the bytes. 100 MB per file. Type and size checked. A "PDF" must start like one. |
+| PDF block: `/pdf`, toolbar, palette. Choose a file. Name, pages and size. Open, or Enter on the block. | Tested | Unit and end-to-end. If PDF.js cannot open the file, the app refuses it with a message. |
+| PDF reader (PDF.js 6.5) | Tested | Its own screen, `#/file/<id>`. Pages painted only near the screen and released far from it. Selectable text layer. Fit to width, zoom 50 to 300 %. Go to page by number. Download. |
+| Highlights in four colors, with a note on each | Tested | Select text, choose a color. Stored as fractions of the page, so they stay on the words at any zoom (end-to-end checks it after a zoom). Notes save as you type, "Note saved" after the write. Delete has Undo. |
+| Recording block: `/record`. Record, pause, resume, stop and save. | Tested | Unit with a stand-in recorder. End-to-end with the Chromium stand-in microphone. Opus in WebM or Ogg, AAC in MP4 on Safari, 64 kbit/s. Stops automatically at 100 MB. |
+| A recording that runs when its block goes is saved. Closing the tab asks first. | Implemented | Since 0.8.0 it goes into its block (see 0.8.0). The whole flow is not automated. |
+| Sound file in place of a recording | Tested (component) | The browser reads the length when it can |
+| Player for recordings | Tested | Plays from the stored bytes through a blob: URL. End-to-end checks that it decodes under the CSP. |
+| Deleting files | Tested | With the last page that used it, on permanent delete of that page. Removing the block keeps the file, so undo works. |
+| Backups with files (format 2) | Tested | Bytes as base64. Checked like each record (type, size, bytes match, PDF signature, highlights on known files). A backup over 400 MB is refused when it is made, not on restore. Format 1 files still restore. |
+| PDF.js data files served from the app | Tested | Fonts, character maps, color profiles and image decoders copied into `dist/pdfjs/` (3.2 MB). No other site is contacted. |
+| Removed | Removed | Files screen ("audio library"): list, filter, rename, delete unused files |
 
-**Gaps, on purpose or still owed:**
+**Gaps (on purpose or still to do):**
 
-- **Highlights need a text layer.** A scanned PDF has no text to select, so it cannot be highlighted.
-  No free drawing, shapes, sticky notes or ink on PDF pages.
-- **No search inside a PDF**, no outline or thumbnails, no page rotation. Highlights are not shown
-  in the page that holds the PDF, and highlight text is not in global search.
-- **No PDF export of a page** and no PDF annotations written into the file: highlights stay in
-  TypeNote and in its backups.
-- **Recordings are kept in memory until stopped.** A crash or a closed tab during a recording loses
-  it. No timestamps linking a recording to the notes typed while it ran.
-- **Recording is started from a page only.** The Files screen lists and plays, but has no record
-  button and no upload of its own.
-- **Backups are one JSON text with base64 bytes**, so files cost a third more space in a backup, and
-  a workspace whose backup would pass 400 MB cannot be backed up until files are deleted or
-  downloaded. A zipped format is the fix (ARCHITECTURE.md, Known limits).
-- Two blocks can show the same file (a duplicated or pasted block). That is on purpose: a file's
-  bytes never change, and its highlights are shared.
-- On ruled paper, a PDF or recording card has a minimum height in whole lines, but a card whose
-  controls wrap to more rows on a narrow screen (an empty recording block, a recording in progress)
-  can leave the text below it off the rules.
-- Not tried: Safari or Firefox recording, iOS, a real microphone, large or damaged real-world PDFs,
-  right-to-left PDFs, a screen reader in the reader.
+- **Highlights need a text layer.** A scanned PDF has no text to select, so you cannot highlight it. No free drawing, shapes, sticky notes or ink on PDF pages.
+- No outline or thumbnails, no page rotation. Highlights do not show in the page that holds the PDF, and highlight text is not in search.
+- **No PDF export of a page.** Annotations are not written into the PDF file. Highlights stay in TypeNote and its backups.
+- **Recordings stay in memory until stop.** A crash or a closed tab during a recording loses it. No timestamps that link a recording to the notes typed during it.
+- **Backups are one JSON text with base64 bytes.** Thus files take a third more space in a backup. If the backup of a workspace would be more than 400 MB, you cannot back it up until you delete or download files. A zipped format is the fix (ARCHITECTURE.md, Known limits).
+- Two blocks can show the same file (a duplicated or pasted block). This is on purpose: the bytes of a file never change, and its highlights are shared.
+- On ruled paper, a PDF or recording card has a minimum height in whole lines. But if the controls of a card wrap to more rows on a narrow screen (an empty recording block, a recording in progress), the text below can move off the rules.
+- Not tried: recording on Safari or Firefox, iOS, a real microphone, large or damaged real-world PDFs, right-to-left PDFs, a screen reader in the reader.
 
 ## Milestone 7 — Study features
 
 | Item | Status | Note |
 | --- | --- | --- |
-| Library check: KaTeX, ts-fsrs | Done | KaTeX 0.19.1 and ts-fsrs 5.4.2, both MIT, no browser dependencies, `npm audit` clean. Reasons in ARCHITECTURE.md, D16 |
-| Equations: inline and block, drawn with KaTeX | Tested | `$x^2$` and `$$` typed, `/equation`, toolbar, palette, Ctrl/Cmd + Shift + E. Unit and end-to-end; the end-to-end test checks KaTeX's font loads under the Content Security Policy |
-| Editing an equation's LaTeX in a dialog with a preview | Implemented | Enter saves, an empty formula removes it, Cancel on a new one removes it. The dialog is not covered by an automated test; the insert and the stored result are |
-| An unreadable formula shows its source and the reason | Tested (the renderer) / Implemented (the view) | KaTeX with `trust: false`; unit test that links, raw HTML and styles are not produced |
-| Page links with `[[`, and creating the linked page from the menu | Tested | End-to-end. The new page goes where the linking page is. The link shows the page's current title |
-| Links to deleted pages | Implemented | Struck through, with "no longer exists" or "in the Trash" in the name. Not automated |
-| "Linked from" (backlinks) under each page | Tested | Unit (index) and end-to-end, including after a reload |
-| Graph of pages and links | Tested | End-to-end: counts, named points, a point opens its page. Layout unit-tested (repeatable, inside the square, linked pages closer). Zoom and drag not automated |
-| Graph as a list | Implemented | The same links as text, for screen readers |
-| Schema v5: `decks`, `flashcards`, `reviewLogs`, with migration test | Tested | A version 4 database opens with its pages and files intact |
-| Decks: create, edit, delete with confirmation | Tested (repository) / Implemented (screens) | Delete takes the cards and their history |
-| Cards: add, edit, move to another deck, delete with Undo | Tested (repository) / Implemented (screen) | Editing keeps the schedule |
-| Card from a page ("Make a flashcard") | Tested | End-to-end. From the selection, or the paragraph with the caret; the card links back to its page |
-| Equations in cards (`$…$`) | Tested | Unit (splitting) and end-to-end (preview in the dialog) |
-| FSRS scheduling (ts-fsrs) | Tested | Wrapper unit-tested: steps, graduation, lapses, retention, repeatable. Stored in our own format |
-| Review session: show answer, four answers with their next interval, Undo, keyboard | Tested | Component test and end-to-end. Space, 1 to 4, Z |
-| Study order and the daily limit of new cards | Tested | Pure function, unit-tested |
-| Settings → Study: new cards per day, target recall | Implemented | Validated on read (unit-tested); the screen is not automated |
-| Backups with decks, cards and history | Tested | Round trip, older files, and seven kinds of damage rejected with the place named |
+| Library check: KaTeX | Done | KaTeX 0.19.1, MIT, no browser dependencies, `npm audit` clean. Reasons: ARCHITECTURE.md, D16. |
+| Equations: inline and block, drawn with KaTeX | Tested | `$x^2$` and `$$` typed, `/equation`, toolbar, palette, Ctrl/Cmd + Shift + E. Unit and end-to-end. The end-to-end test checks that the KaTeX font loads under the CSP. |
+| Edit the LaTeX of an equation in a dialog with a preview | Implemented | Enter saves. An empty formula removes it. Cancel on a new equation removes it. The insert and the stored result have tests. The dialog does not. |
+| An unreadable formula shows its source and the reason | Tested (the renderer) / Implemented (the view) | KaTeX with `trust: false`. A unit test checks that no links, raw HTML or styles come out. |
+| Removed | Removed | Page links (`[[`), backlinks, the graph, decks, flashcards, FSRS (ts-fsrs), review sessions, Settings → Study, schema v5 tables |
 
-**Gaps, on purpose or still owed:**
+**Gaps (on purpose or still to do):**
 
-- **Links go to whole pages.** No links to a block, no web links, no link preview on hover. A link's
-  stored title goes stale when the page is renamed (only used if the page is gone).
-- **Graph:** at most 400 pages (the most linked); no clusters by notebook or tag, no filter, no
-  saved positions. Dragging and zooming work by pointer and buttons; the keyboard moves between
-  pages, not around the picture.
-- **Cards are text.** No images, audio, cloze deletions, reversed cards, tags on cards, Anki import or
-  export, or statistics beyond the counts. A card made from a page does not change when the page does.
-- **FSRS parameters are the library's defaults.** No optimisation from your own review history.
-- **Equations on ruled paper:** a tall formula pushes the text below off the rules (ARCHITECTURE.md,
-  Known limits). Equation source and link titles count as words.
-- A card's source page is not cleared when the page is deleted permanently: the card says the page
-  was deleted.
-- Not run: a screen reader on equations and the graph, Firefox, Safari, phone keyboards with `[[`,
-  a graph with hundreds of pages.
+- **Equations on ruled paper:** a tall formula pushes the text below off the rules (ARCHITECTURE.md, Known limits). Equation source counts as words.
+- Not run: a screen reader on equations, Firefox, Safari.
 
-## Milestone 8
+## Milestone 8 — Polish and deployment
 
-As in the master specification: dashboard polish, accessibility pass, PWA and offline, first real
-deployment.
+From the master specification: accessibility pass, PWA and offline, first real deployment. "Dashboard polish" went with the dashboard (0.8.0).
+
+| Item | Status | Note |
+| --- | --- | --- |
+| Library check: vite-plugin-pwa | Done | 2.0.0 with Workbox 7.4, MIT, build time only. `npm audit`: one moderate advisory in `minimatch` under `workbox-build` (a build tool, not shipped). Reasons: ARCHITECTURE.md, D17. |
+| Offline: all files precached. The app opens and works with no network. | Tested | End-to-end: write a page, read a PDF and open the typing test while offline |
+| Installable: web manifest, icons (192, 512, maskable, Apple touch) | Implemented | Install not tried in a browser |
+| "Ready to work offline" and "new version ready" messages. An update applies only on Reload. | Tested (offline message) / Implemented (update) | The update needs two builds. Not automated. |
+| First real deployment (GitHub Pages) | Not started | The workflow exists and never ran. Needs Pages turned on in the repository settings, and approval from the owner. |
+| Initial JS under 200 kB gzip | Not started | Now 173 kB, but the editor (163 kB gzip) loads with the first page |
+| Workspace read under 100 ms at 5,000 pages | Not started | Not measured (D3) |
+| Accessibility pass (keyboard, screen reader, 320 px, 200 % zoom) | Not started | |
+
+**Gaps (on purpose or still to do):**
+
+- The first visit stores about 6.5 MB, PDF.js data included, also for someone who never opens a PDF.
+- Not run: app install, an update from one build to the next, Firefox and Safari offline.
+
+## 0.8.0 — The revamp
+
+Decided with the owner on 2026-11-18 (PRD.md, "The 0.8.0 revamp"): a typewriter notepad, not a study app.
+
+| Item | Status | Note |
+| --- | --- | --- |
+| Schema v6: drop folders, tags, writing days, decks, cards, review logs. Flatten notebooks and pages. Page links to text. `pdfTexts` table. | Tested | Upgrade test from a version 5 database with each removed kind of data |
+| Backup format 3. Format 1 and 2 files still restore, and the app tells which parts it left out. | Tested | Unit (old file with folders, tags, cards, page links) and end-to-end (format 3 round trip) |
+| Home: the shelf, loose pages below, "Create your first notebook" on an empty shelf. A new notebook opens immediately. | Tested | End-to-end |
+| Old addresses (`#/library…`) go home | Tested | End-to-end |
+| Slim icon rail, bottom bar on phones, the rail fades while typing | Tested (rail, bottom bar) / Implemented (fade) | The fade was examined in the browser (the rule applies). No test. |
+| Typewriter on by default: sounds and the mono typeface | Tested | Unit (defaults) and end-to-end (sounds) |
+| Removed: dashboard, streaks, goal, Study, graph, tags, folders, page links, Files screen | Done | Code, routes, settings and strings removed |
+| Search: page text, titles, notebook names and PDF text. Grouped by notebook. Marked words. Match counts. | Tested | Unit and end-to-end. Each word must match. Case and accents are ignored. The Trash is not searched. |
+| PDF text read once in the background, stored, and read again after a restore | Tested (search) / Implemented (indexer) | The end-to-end PDF search uses the indexer. A damaged PDF is skipped for the session. |
+| A page opens at the match. Find bar with Enter / Shift+Enter, wraps, Escape closes. | Tested | Unit (match by document position) and end-to-end |
+| A PDF opens at the page with the match, with the words marked | Tested | End-to-end |
+| Typing test: 15/30/60 s, my notes (one notebook or all) or built-in passages, sounds, WPM and accuracy, nothing stored | Tested | Unit (passages, scoring) and end-to-end (with a controlled clock) |
+| A recording that ends after its page closed goes into its block (before: the Files screen) | Tested | Unit (`fillFileBlock`) |
+| Download a recording from its block (before: the Files screen) | Tested | End-to-end |
+
+**Gaps (on purpose or still to do):**
+
+- Search finds the text of a PDF only after the app reads it. A large PDF takes a few seconds in the background. Until then its words are not found. A PDF with no text layer (a scan) has no words.
+- A match in the source of an equation counts in the search results but is not marked in the page.
+- The typing test needs a dozen words in a page to use notes. With fewer notes, a passage repeats.
+- You cannot rename files now (that was in the Files screen). A file that no page uses stays in the database until a page that used it is deleted permanently.
+- The PDF match marks whole runs of text as PDF.js lays them out. A word split across two runs is not found.
 
 ## Open questions for the owner
 
-1. Should the full master specification be pasted into `PRD.md`?
-2. Licence for the project (currently `UNLICENSED` in `package.json`).
+1. Paste the full master specification into `PRD.md`?
+2. License for the project (now `UNLICENSED` in `package.json`).

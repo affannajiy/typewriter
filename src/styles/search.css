@@ -1,0 +1,29 @@
+/*
+ * Search: matched words in results, in a page, and in a PDF.
+ * Colours come from the theme tokens only.
+ */
+
+/* Matched words in a result. The weight marks them too, so colour is not the only cue. */
+mark.tn-mark {
+  background: var(--tn-match);
+  color: inherit;
+  font-weight: 600;
+  border-radius: 2px;
+}
+
+/* Matches in the open page. The one being shown also gets an outline. */
+.tn-prose .tn-find-match {
+  background: var(--tn-match);
+  border-radius: 2px;
+}
+.tn-prose .tn-find-current {
+  background: var(--tn-match-current);
+  outline: 2px solid var(--tn-text);
+  outline-offset: 1px;
+}
+
+/* Matches in a PDF's text layer, whose own text is transparent. */
+.textLayer .tn-pdf-match {
+  background: var(--tn-match);
+  border-radius: 2px;
+}

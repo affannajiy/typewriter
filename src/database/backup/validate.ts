@@ -2,8 +2,8 @@ import { SCHEMA_VERSION } from '@/database/db';
 import { MAX_ATTACHMENT_BYTES, MAX_NOTE_LENGTH, MAX_QUOTE_LENGTH, isAllowedMime, looksLikePdf } from '@/database/repositories/attachments';
 import { MAX_NAME_LENGTH } from '@/database/repositories/common';
 import { SETTING_KEYS, isValidSetting } from '@/features/settings/model';
-import { MAX_CARD_TEXT, MAX_DECK_DESCRIPTION } from '@/database/repositories/flashcards';
-import { ATTACHMENT_KINDS, type Annotation, CARD_STATES, type CardMemory, type Deck, type Flashcard, RATINGS, type ReviewLog, type Attachment, type AttachmentData, COVER_KINDS, HIGHLIGHT_COLOURS, DRAW_TOOLS, type DocNode, type Drawing, type Folder, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke, type Tag, type WritingDay } from '@/types/models';
+import { ATTACHMENT_KINDS, type Annotation, type Attachment, type AttachmentData, COVER_KINDS, HIGHLIGHT_COLOURS, DRAW_TOOLS, type DocNode, type Drawing, INK_COLOURS, NOTEBOOK_ICONS, type Notebook, type Page, type SettingRecord, type Stroke } from '@/types/models';
+import { REMOVED_TABLES, convertLegacyDoc } from '@/database/legacy';
 import { base64ToBytes } from '@/utils/base64';
 import { isHexColour } from '@/utils/colour';
 
@@ -15,8 +15,12 @@ import { isHexColour } from '@/utils/colour';
  * whole file, and nothing is repaired silently.
  */
 
-/** Version 2 (0.6.0) adds files: their bytes are base64 text in `attachmentData`. */
-export const BACKUP_FORMAT_VERSION = 2;
+/**
+ * Version 2 (0.6.0) adds files: their bytes are base64 text in `attachmentData`.
+ * Version 3 (0.8.0) removes folders, tags, flashcards and the words-written log.
+ * Older files are still read; those parts of them are left out.
+ */
+export const BACKUP_FORMAT_VERSION = 3;
 /**
  * The largest backup that can be restored. A backup is read as one string,
  * and browsers cap a string at about 500 million characters.
@@ -24,24 +28,16 @@ export const BACKUP_FORMAT_VERSION = 2;
 export const MAX_BACKUP_BYTES = 400 * 1024 * 1024;
 
 export interface BackupData {
-  folders: Folder[];
   notebooks: Notebook[];
   pages: Page[];
-  tags: Tag[];
   settings: SettingRecord[];
   /** Missing from files written before schema version 2; read as empty. */
   drawings: Drawing[];
-  /** Missing from files written before schema version 3; read as empty. */
-  writingDays: WritingDay[];
   /** Missing from files written before schema version 4 (format 2); read as empty. */
   attachments: Attachment[];
   /** In the file, each entry's bytes are base64 text in `data`. */
   attachmentData: AttachmentData[];
   annotations: Annotation[];
-  /** Missing from files written before schema version 5; read as empty. */
-  decks: Deck[];
-  flashcards: Flashcard[];
-  reviewLogs: ReviewLog[];
 }
 
 export interface BackupFile {
@@ -50,6 +46,11 @@ export interface BackupFile {
   schemaVersion: number;
   exportedAt: string;
   data: BackupData;
+  /**
+   * Set when reading: the file was made before 0.8.0 and held folders, tags,
+   * flashcards or writing stats. They are not read. Never written to a file.
+   */
+  droppedLegacy: boolean;
 }
 
 export type BackupErrorCode = 'too-large' | 'export-too-large' | 'not-json' | 'not-typenote' | 'newer-version' | 'invalid-record' | 'duplicate-id';
@@ -100,10 +101,6 @@ function bool(v: unknown, path: string): boolean {
 }
 function colour(v: unknown, path: string): string {
   return isHexColour(v) ? v.toLowerCase() : fail(path);
-}
-function idList(v: unknown, path: string): string[] {
-  if (!Array.isArray(v) || v.length > 500) return fail(path);
-  return v.map((item, i) => id(item, `${path}[${i}]`));
 }
 function list(v: unknown, path: string): unknown[] {
   return Array.isArray(v) ? v : fail(path);
@@ -168,17 +165,6 @@ function docNode(v: unknown, path: string, depth: number): DocNode {
   return node;
 }
 
-function folder(v: unknown, path: string): Folder {
-  const r = obj(v, path);
-  return {
-    ...versioned(r, path),
-    ...trashable(r, path),
-    name: str(r.name, `${path}.name`),
-    parentId: nullableId(r.parentId, `${path}.parentId`),
-    order: num(r.order, `${path}.order`),
-  };
-}
-
 function notebook(v: unknown, path: string): Notebook {
   const r = obj(v, path);
   const cover = obj(r.cover, `${path}.cover`);
@@ -187,11 +173,9 @@ function notebook(v: unknown, path: string): Notebook {
     ...trashable(r, path),
     name: str(r.name, `${path}.name`),
     description: str(r.description, `${path}.description`, 1000),
-    folderId: nullableId(r.folderId, `${path}.folderId`),
     cover: { kind: oneOf(cover.kind, COVER_KINDS, `${path}.cover.kind`), colour: colour(cover.colour, `${path}.cover.colour`) },
     // Missing before schema version 3.
     icon: r.icon === undefined || r.icon === null ? null : oneOf(r.icon, NOTEBOOK_ICONS, `${path}.icon`),
-    tagIds: idList(r.tagIds, `${path}.tagIds`),
     favourite: bool(r.favourite, `${path}.favourite`),
     order: num(r.order, `${path}.order`),
   };
@@ -200,19 +184,15 @@ function notebook(v: unknown, path: string): Notebook {
 function page(v: unknown, path: string): Page {
   const r = obj(v, path);
   const layout = r.layout === 'continuous' || r.layout === 'paginated' ? r.layout : fail(`${path}.layout`);
-  const notebookId = nullableId(r.notebookId, `${path}.notebookId`);
-  const folderId = nullableId(r.folderId, `${path}.folderId`);
-  if (notebookId !== null && folderId !== null) fail(`${path}.folderId`);
+  // Before 0.8.0 a page could be in a folder (`folderId`). It comes back as a loose page.
   return {
     ...versioned(r, path),
     ...trashable(r, path),
     title: str(r.title, `${path}.title`),
-    notebookId,
-    folderId,
-    content: docNode(r.content, `${path}.content`, 0),
+    notebookId: nullableId(r.notebookId, `${path}.notebookId`),
+    content: convertLegacyDoc(docNode(r.content, `${path}.content`, 0)),
     plainText: str(r.plainText, `${path}.plainText`, MAX_TEXT),
     layout,
-    tagIds: idList(r.tagIds, `${path}.tagIds`),
     favourite: bool(r.favourite, `${path}.favourite`),
     pinned: bool(r.pinned, `${path}.pinned`),
     order: num(r.order, `${path}.order`),
@@ -254,18 +234,6 @@ function drawing(v: unknown, path: string): Drawing {
     height,
     strokes: strokes.map((s, i) => stroke(s, `${path}.strokes[${i}]`)),
   };
-}
-
-const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_WORDS_PER_DAY = 10_000_000;
-
-function writingDay(v: unknown, path: string): WritingDay {
-  const r = obj(v, path);
-  const date = str(r.date, `${path}.date`, 10);
-  if (!DAY_KEY.test(date)) fail(`${path}.date`);
-  const words = num(r.words, `${path}.words`);
-  if (!Number.isInteger(words) || words < 0 || words > MAX_WORDS_PER_DAY) fail(`${path}.words`);
-  return { date, words, updatedAt: num(r.updatedAt, `${path}.updatedAt`) };
 }
 
 function attachment(v: unknown, path: string): Attachment {
@@ -336,84 +304,6 @@ function checkFiles(files: Attachment[], data: AttachmentData[], annotations: An
   });
 }
 
-function deck(v: unknown, path: string): Deck {
-  const r = obj(v, path);
-  return {
-    ...versioned(r, path),
-    name: str(r.name, `${path}.name`),
-    description: str(r.description, `${path}.description`, MAX_DECK_DESCRIPTION),
-    order: num(r.order, `${path}.order`),
-  };
-}
-
-/** A card's schedule: known state, finite numbers in range, whole counts. */
-function memory(r: Raw, path: string): CardMemory {
-  const whole = (value: unknown, at: string) => {
-    const n = num(value, at);
-    return Number.isInteger(n) && n >= 0 ? n : fail(at);
-  };
-  const within = (value: unknown, at: string, min: number, max = Number.MAX_VALUE) => {
-    const n = num(value, at);
-    return n >= min && n <= max ? n : fail(at);
-  };
-  return {
-    state: oneOf(r.state, CARD_STATES, `${path}.state`),
-    due: num(r.due, `${path}.due`),
-    stability: within(r.stability, `${path}.stability`, 0),
-    difficulty: within(r.difficulty, `${path}.difficulty`, 0, 10),
-    scheduledDays: within(r.scheduledDays, `${path}.scheduledDays`, 0),
-    learningSteps: whole(r.learningSteps, `${path}.learningSteps`),
-    reps: whole(r.reps, `${path}.reps`),
-    lapses: whole(r.lapses, `${path}.lapses`),
-    lastReview: nullableNum(r.lastReview, `${path}.lastReview`),
-  };
-}
-
-function flashcard(v: unknown, path: string): Flashcard {
-  const r = obj(v, path);
-  const front = str(r.front, `${path}.front`, MAX_CARD_TEXT);
-  if (front.trim() === '') fail(`${path}.front`);
-  return {
-    ...versioned(r, path),
-    ...memory(r, path),
-    deckId: id(r.deckId, `${path}.deckId`),
-    front,
-    back: str(r.back, `${path}.back`, MAX_CARD_TEXT),
-    sourcePageId: nullableId(r.sourcePageId, `${path}.sourcePageId`),
-  };
-}
-
-function reviewLog(v: unknown, path: string): ReviewLog {
-  const r = obj(v, path);
-  return {
-    id: id(r.id, `${path}.id`),
-    cardId: id(r.cardId, `${path}.cardId`),
-    deckId: id(r.deckId, `${path}.deckId`),
-    rating: oneOf(r.rating, RATINGS, `${path}.rating`),
-    reviewedAt: num(r.reviewedAt, `${path}.reviewedAt`),
-    before: memory(obj(r.before, `${path}.before`), `${path}.before`),
-  };
-}
-
-/** Every card is in a deck of the file, and every answer belongs to a card of the file, in that card's deck. */
-function checkStudy(decks: Deck[], cards: Flashcard[], logs: ReviewLog[]): void {
-  const deckIds = new Set(decks.map((d) => d.id));
-  const cardDeck = new Map(cards.map((c) => [c.id, c.deckId]));
-  cards.forEach((card, i) => {
-    if (!deckIds.has(card.deckId)) fail(`flashcards[${i}].deckId`);
-  });
-  logs.forEach((log, i) => {
-    const deckId = cardDeck.get(log.cardId);
-    if (deckId === undefined) fail(`reviewLogs[${i}].cardId`);
-    else if (deckId !== log.deckId) fail(`reviewLogs[${i}].deckId`);
-  });
-}
-
-function tag(v: unknown, path: string): Tag {
-  const r = obj(v, path);
-  return { ...versioned(r, path), name: str(r.name, `${path}.name`, 40), colour: colour(r.colour, `${path}.colour`) };
-}
-
 /** Unknown or invalid settings are left out: they are preferences, not content. */
 function settings(v: unknown, path: string): SettingRecord[] {
   const out: SettingRecord[] = [];
@@ -434,15 +324,6 @@ function unique<T extends { id: string }>(items: T[], path: string): T[] {
     seen.add(item.id);
   }
   return items;
-}
-
-function uniqueDays(days: WritingDay[]): WritingDay[] {
-  const seen = new Set<string>();
-  for (const day of days) {
-    if (seen.has(day.date)) throw new BackupError('duplicate-id', `writingDays: ${day.date}`);
-    seen.add(day.date);
-  }
-  return days;
 }
 
 /** Parse and validate the text of a backup file. Throws BackupError. */
@@ -467,25 +348,15 @@ export function parseBackup(text: string): BackupFile {
     schemaVersion,
     exportedAt: str(raw.exportedAt, 'exportedAt', 40),
     data: {
-      folders: unique(each('folders', folder), 'folders'),
       notebooks: unique(each('notebooks', notebook), 'notebooks'),
       pages: unique(each('pages', page), 'pages'),
-      tags: unique(each('tags', tag), 'tags'),
       settings: settings(d.settings ?? [], 'settings'),
       drawings: d.drawings === undefined ? [] : unique(each('drawings', drawing), 'drawings'),
-      writingDays: d.writingDays === undefined ? [] : uniqueDays(each('writingDays', writingDay)),
       ...files(),
-      ...study(),
     },
+    // Folders, tags, flashcards and writing stats were removed in 0.8.0: they are not read.
+    droppedLegacy: REMOVED_TABLES.some((key) => Array.isArray(d[key]) && d[key].length > 0),
   };
-
-  function study() {
-    const decks = d.decks === undefined ? [] : unique(each('decks', deck), 'decks');
-    const flashcards = d.flashcards === undefined ? [] : unique(each('flashcards', flashcard), 'flashcards');
-    const reviewLogs = d.reviewLogs === undefined ? [] : unique(each('reviewLogs', reviewLog), 'reviewLogs');
-    checkStudy(decks, flashcards, reviewLogs);
-    return { decks, flashcards, reviewLogs };
-  }
 
   function files() {
     const attachments = d.attachments === undefined ? [] : unique(each('attachments', attachment), 'attachments');

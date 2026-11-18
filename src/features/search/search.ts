@@ -1,118 +1,286 @@
-import type { Folder, Id, Notebook, Page } from '@/types/models';
+import type { Id, Notebook, Page } from '@/types/models';
 
 /**
- * Global search over the names of folders, notebooks and pages, and over the
- * text of pages (`plainText`, derived on every save).
+ * Search over everything written: notebook names, page titles, the text of
+ * every page (`plainText`, derived on every save), and the text of PDFs
+ * placed in pages (read once, see services/pdfIndex.ts).
  *
- * It scans the workspace that is already in memory: no index to build or to
- * keep in step. Every word of the query must appear; case and accents are
- * ignored. Items in the Trash are not in the workspace, so they are not found.
+ * It scans what is already in memory: no index to build or to keep in step.
+ * Every word of the query must appear; case and accents are ignored. Items in
+ * the Trash are not in the workspace, so they are not found.
  */
-
-export interface SearchSource {
-  folders: Folder[];
-  notebooks: Notebook[];
-  pages: Page[];
-}
-
-export interface SearchHit {
-  kind: 'page' | 'notebook' | 'folder';
-  id: Id;
-  title: string;
-  /** For a page whose text matched: the text around the first match. */
-  snippet: string;
-  /** Name of the notebook or folder that holds the item. Empty at the top level. */
-  location: string;
-}
 
 export const MAX_QUERY_LENGTH = 200;
 
 /** Lower case, without accents: "Élan" and "elan" compare equal. */
 export const fold = (text: string): string => text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
 
-export const queryWords = (query: string): string[] => fold(query.slice(0, MAX_QUERY_LENGTH)).split(/\s+/u).filter(Boolean);
+export const queryWords = (query: string): string[] => [...new Set(fold(query.slice(0, MAX_QUERY_LENGTH)).split(/\s+/u).filter(Boolean))];
 
-// Folding a long text on every key press is the costly part, so it is done once per page object.
-const foldedText = new WeakMap<Page, string>();
-function foldedBody(page: Page): string {
-  let text = foldedText.get(page);
-  if (text === undefined) {
-    text = fold(page.plainText);
-    foldedText.set(page, text);
-  }
-  return text;
+/** A piece of text and, inside it, where the words were found: [start, end) pairs. */
+export interface Marked {
+  text: string;
+  marks: [number, number][];
 }
 
-const SNIPPET_BEFORE = 30;
-const SNIPPET_LENGTH = 120;
-
-/** A short piece of the text around the first word found, cut at word boundaries where it can be. */
-export function snippetAround(text: string, words: string[]): string {
-  const flat = text.replace(/\s+/gu, ' ').trim();
-  const lower = flat.toLowerCase();
-  const found = words.map((word) => lower.indexOf(word)).filter((index) => index >= 0);
-  const at = found.length > 0 ? Math.min(...found) : 0;
-  let start = Math.max(0, at - SNIPPET_BEFORE);
-  if (start > 0) {
-    const space = flat.indexOf(' ', start);
-    if (space >= 0 && space < at) start = space + 1;
-  }
-  const end = Math.min(flat.length, start + SNIPPET_LENGTH);
-  return `${start > 0 ? '…' : ''}${flat.slice(start, end)}${end < flat.length ? '…' : ''}`;
+/**
+ * Text folded for matching, with the place of each folded character in the
+ * original text. Folding can change the length ("ﬁ" becomes "fi"), so a
+ * match found in the folded text is mapped back through `at`.
+ */
+interface Folded {
+  text: string;
+  /** at[i]: index in the original text of folded character i. One extra entry: the original length. */
+  at: number[];
 }
 
-interface Ranked {
+function foldWithMap(original: string): Folded {
+  let text = '';
+  const at: number[] = [];
+  let index = 0;
+  for (const char of original) {
+    const folded = fold(char);
+    for (let i = 0; i < folded.length; i++) at.push(index);
+    text += folded;
+    index += char.length;
+  }
+  at.push(original.length);
+  return { text, at };
+}
+
+// Folding a long text on every key press is the costly part, so it is done once per text.
+const foldCache = new Map<string, Folded>();
+const FOLD_CACHE_SIZE = 2000;
+function folded(original: string): Folded {
+  let entry = foldCache.get(original);
+  if (!entry) {
+    entry = foldWithMap(original);
+    if (foldCache.size >= FOLD_CACHE_SIZE) foldCache.delete(foldCache.keys().next().value!);
+    foldCache.set(original, entry);
+  }
+  return entry;
+}
+
+/** Every place where one of the words appears, in the original text, sorted, overlaps joined. */
+export function findMatches(original: string, words: string[]): [number, number][] {
+  if (words.length === 0 || original === '') return [];
+  const { text, at } = folded(original);
+  const found: [number, number][] = [];
+  for (const word of words) {
+    for (let from = text.indexOf(word); from >= 0; from = text.indexOf(word, from + word.length)) {
+      found.push([at[from]!, at[from + word.length]!]);
+    }
+  }
+  found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const joined: [number, number][] = [];
+  for (const range of found) {
+    const last = joined[joined.length - 1];
+    if (last && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]);
+    else joined.push([...range]);
+  }
+  return joined;
+}
+
+/** True when every word appears somewhere in the texts together. */
+function hasAll(texts: string[], words: string[]): boolean {
+  const all = texts.map((t) => folded(t).text);
+  return words.every((word) => all.some((t) => t.includes(word)));
+}
+
+const SNIPPET_BEFORE = 40;
+const SNIPPET_LENGTH = 140;
+
+/** A short piece of the text around one match, cut at word boundaries where it can be, with every match inside marked. */
+export function snippetAt(original: string, matches: [number, number][], index: number): Marked {
+  const [start] = matches[index] ?? [0, 0];
+  let from = Math.max(0, start - SNIPPET_BEFORE);
+  if (from > 0) {
+    const space = original.indexOf(' ', from);
+    if (space >= 0 && space < start) from = space + 1;
+  }
+  let to = Math.min(original.length, from + SNIPPET_LENGTH);
+  if (to < original.length) {
+    const space = original.lastIndexOf(' ', to);
+    if (space > start) to = space;
+  }
+  const lead = from > 0 ? '…' : '';
+  const piece = original.slice(from, to);
+  // Whitespace runs become one space; the marks must follow, so map each character.
+  let text = lead;
+  const at: number[] = [];
+  let lastSpace = false;
+  for (let i = 0; i < piece.length; i++) {
+    const char = piece[i]!;
+    const space = /\s/u.test(char);
+    at.push(text.length);
+    if (space && lastSpace) continue;
+    text += space ? ' ' : char;
+    lastSpace = space;
+  }
+  at.push(text.length);
+  if (to < original.length) text += '…';
+  const marks = matches
+    .filter(([a, b]) => a >= from && b <= to)
+    .map(([a, b]): [number, number] => [at[a - from]!, at[b - from]!]);
+  return { text, marks };
+}
+
+/** Text with no match: the name as it is, nothing marked. */
+const plain = (text: string): Marked => ({ text, marks: [] });
+
+const SNIPPETS_PER_PAGE = 3;
+
+/** A page that matched: by its title, its text, or both. */
+export interface PageHit {
+  kind: 'page';
+  page: Page;
+  title: Marked;
+  /** Matches in the page's text. */
+  count: number;
+  /** Up to three places in the text, each around a different match. */
+  snippets: Marked[];
+}
+
+/** A PDF in a page whose text matched. */
+export interface PdfHit {
+  kind: 'pdf';
+  attachmentId: Id;
+  name: Marked;
+  /** The page that shows the PDF. The result is listed in that page's notebook. */
+  page: Page;
+  /** Matches in the PDF, on all its pages. */
+  count: number;
+  /** The first PDF page with a match, from 1. */
+  firstPage: number;
+  /** PDF pages with a match, from 1. */
+  pages: number[];
+  snippet: Marked;
+}
+
+export type SearchHit = PageHit | PdfHit;
+
+/** Results in one notebook, or among the loose pages (notebook null). */
+export interface SearchGroup {
+  notebook: Notebook | null;
+  /** The notebook's name, marked when it matched. */
+  name: Marked;
+  /** True when the notebook's own name matched. */
+  nameMatched: boolean;
+  hits: SearchHit[];
+}
+
+export interface SearchResults {
+  groups: SearchGroup[];
+  /** Pages and PDFs found, before any limit. */
+  total: number;
+  /** Matches in all text, before any limit. */
+  matches: number;
+}
+
+export interface SearchSource {
+  notebooks: Notebook[];
+  pages: Page[];
+  /** The stored text of PDFs by attachment ID. */
+  pdfTexts?: Map<Id, string[]>;
+  /** File names by attachment ID. */
+  fileNames?: Map<Id, string>;
+  /** For each file, the live pages that show it. */
+  fileUses?: Map<Id, Page[]>;
+}
+
+interface Scored {
   hit: SearchHit;
   score: number;
   updatedAt: number;
 }
 
-function titleScore(title: string, words: string[]): number {
-  const folded = fold(title);
-  if (!words.every((word) => folded.includes(word))) return 0;
-  // An exact name first, then a name that starts with the query, then any name match.
-  if (folded === words.join(' ')) return 100;
-  return folded.startsWith(words[0]!) ? 60 : 40;
+/** A title that holds the whole query ranks first, then one that starts with it. */
+function titleScore(title: string, words: string[], query: string): number {
+  const text = folded(title).text;
+  if (!words.every((word) => text.includes(word))) return 0;
+  if (text === query) return 100;
+  return text.startsWith(words[0]!) ? 60 : 40;
 }
 
-export function searchWorkspace(source: SearchSource, query: string, limit = 20): SearchHit[] {
+/** Search everything. `limit` caps the hits kept; `total` and `matches` count them all. */
+export function searchEverything(source: SearchSource, query: string, limit = 200): SearchResults {
   const words = queryWords(query);
-  if (words.length === 0) return [];
-  const notebookName = new Map(source.notebooks.map((n) => [n.id, n.name]));
-  const folderName = new Map(source.folders.map((f) => [f.id, f.name]));
-  const inFolder = (id: Id | null) => (id ? (folderName.get(id) ?? '') : '');
-  const ranked: Ranked[] = [];
+  if (words.length === 0) return { groups: [], total: 0, matches: 0 };
+  const whole = words.join(' ');
+  const scored: Scored[] = [];
+  let matches = 0;
 
   for (const page of source.pages) {
-    const inTitle = titleScore(page.title, words);
-    const body = foldedBody(page);
-    const title = fold(page.title);
-    const inBody = words.every((word) => body.includes(word) || title.includes(word)) && words.some((word) => body.includes(word));
-    if (!inTitle && !inBody) continue;
-    ranked.push({
-      score: inTitle + (inBody ? 10 : 0),
+    if (!hasAll([page.title, page.plainText], words)) continue;
+    const inTitle = titleScore(page.title, words, whole);
+    const found = findMatches(page.plainText, words);
+    if (!inTitle && found.length === 0) continue;
+    matches += found.length;
+    // Snippets around matches that are apart from each other, not three of the same line.
+    const snippets: Marked[] = [];
+    let shownTo = -1;
+    for (let i = 0; i < found.length && snippets.length < SNIPPETS_PER_PAGE; i++) {
+      if (found[i]![0] < shownTo) continue;
+      snippets.push(snippetAt(page.plainText, found, i));
+      shownTo = found[i]![0] + SNIPPET_LENGTH;
+    }
+    scored.push({
+      score: inTitle + Math.min(found.length, 20),
       updatedAt: page.updatedAt,
-      hit: {
-        kind: 'page',
-        id: page.id,
-        title: page.title,
-        snippet: inBody ? snippetAround(page.plainText, words) : '',
-        location: page.notebookId ? (notebookName.get(page.notebookId) ?? '') : inFolder(page.folderId),
-      },
+      hit: { kind: 'page', page, title: { text: page.title, marks: findMatches(page.title, words) }, count: found.length, snippets },
     });
   }
-  for (const notebook of source.notebooks) {
-    const score = titleScore(notebook.name, words);
-    if (score) ranked.push({ score, updatedAt: notebook.updatedAt, hit: { kind: 'notebook', id: notebook.id, title: notebook.name, snippet: '', location: inFolder(notebook.folderId) } });
-  }
-  for (const folder of source.folders) {
-    const score = titleScore(folder.name, words);
-    if (score) ranked.push({ score, updatedAt: folder.updatedAt, hit: { kind: 'folder', id: folder.id, title: folder.name, snippet: '', location: inFolder(folder.parentId) } });
+
+  for (const [attachmentId, texts] of source.pdfTexts ?? []) {
+    const shownIn = source.fileUses?.get(attachmentId) ?? [];
+    if (shownIn.length === 0) continue;
+    const name = source.fileNames?.get(attachmentId) ?? '';
+    if (!hasAll([name, ...texts], words)) continue;
+    let count = 0;
+    const pages: number[] = [];
+    let snippet: Marked | null = null;
+    texts.forEach((text, index) => {
+      const found = findMatches(text, words);
+      if (found.length === 0) return;
+      count += found.length;
+      pages.push(index + 1);
+      snippet ??= snippetAt(text, found, 0);
+    });
+    const nameMarks = findMatches(name, words);
+    if (count === 0 && nameMarks.length === 0) continue;
+    matches += count;
+    // A file shown in several pages is listed under each, so it is found from every notebook that holds it.
+    for (const page of shownIn) {
+      scored.push({
+        score: titleScore(name, words, whole) / 2 + Math.min(count, 20),
+        updatedAt: page.updatedAt,
+        hit: { kind: 'pdf', attachmentId, name: { text: name, marks: nameMarks }, page, count, firstPage: pages[0] ?? 1, pages, snippet: snippet ?? plain('') },
+      });
+    }
   }
 
-  // Best match first; among equals, the most recently edited.
-  return ranked
-    .sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
-    .slice(0, limit)
-    .map((entry) => entry.hit);
+  scored.sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt);
+  const total = scored.length;
+
+  // Group by notebook, keeping the order of each notebook's best hit.
+  const notebookOf = new Map(source.notebooks.map((n) => [n.id, n]));
+  const groups = new Map<Id | null, SearchGroup>();
+  const groupFor = (notebook: Notebook | null): SearchGroup => {
+    const key = notebook?.id ?? null;
+    let group = groups.get(key);
+    if (!group) {
+      const nameMarks = notebook ? findMatches(notebook.name, words) : [];
+      group = { notebook, name: notebook ? { text: notebook.name, marks: nameMarks } : plain(''), nameMatched: notebook ? titleScore(notebook.name, words, whole) > 0 : false, hits: [] };
+      groups.set(key, group);
+    }
+    return group;
+  };
+  // Notebooks whose name matches come first, even when nothing inside them does.
+  for (const notebook of [...source.notebooks].sort((a, b) => titleScore(b.name, words, whole) - titleScore(a.name, words, whole))) {
+    if (titleScore(notebook.name, words, whole) > 0) groupFor(notebook);
+  }
+  for (const { hit } of scored.slice(0, limit)) {
+    groupFor(hit.page.notebookId ? (notebookOf.get(hit.page.notebookId) ?? null) : null).hits.push(hit);
+  }
+  return { groups: [...groups.values()], total, matches };
 }

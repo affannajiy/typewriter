@@ -1,6 +1,9 @@
+import { getSchema } from '@tiptap/core';
 import { describe, expect, it } from 'vitest';
-import type { Folder, Notebook, Page } from '@/types/models';
-import { type SearchSource, queryWords, searchWorkspace, snippetAround } from './search';
+import { schemaExtensions } from '@/features/editor/extensions';
+import { findInDoc } from '@/features/editor/findInPage';
+import type { Notebook, Page } from '@/types/models';
+import { type SearchSource, findMatches, queryWords, searchEverything, snippetAt } from './search';
 
 const base = { createdAt: 1, updatedAt: 1, rev: 1, deletedAt: null, trashBatchId: null };
 
@@ -11,112 +14,118 @@ const page = (id: string, title: string, plainText: string, extra: Partial<Page>
   plainText,
   content: { type: 'doc' },
   notebookId: null,
-  folderId: null,
   layout: 'continuous',
-  tagIds: [],
   favourite: false,
   pinned: false,
   order: 1,
   lastOpenedAt: null,
   ...extra,
 });
-const notebook = (id: string, name: string, folderId: string | null = null): Notebook => ({ ...base, id, name, description: '', folderId, cover: { kind: 'solid', colour: '#000000' }, icon: null, tagIds: [], favourite: false, order: 1 });
-const folder = (id: string, name: string, parentId: string | null = null): Folder => ({ ...base, id, name, parentId, order: 1 });
+const notebook = (id: string, name: string): Notebook => ({ ...base, id, name, description: '', cover: { kind: 'solid', colour: '#000000' }, icon: null, favourite: false, order: 1 });
 
+const pages = [
+  page('p1', 'Alkanes', 'Saturated hydrocarbons. General formula CnH2n+2. Hydrocarbons burn.', { notebookId: 'n1' }),
+  page('p2', 'Alkenes', 'Unsaturated hydrocarbons with a double bond.', { notebookId: 'n1', updatedAt: 5 }),
+  page('p3', 'The Printing Press', 'Gutenberg, around 1440. Movable type changed the café conversation.', { notebookId: 'n2' }),
+  page('p5', 'Loose thoughts', 'A page outside every notebook about tide pools.'),
+];
 const source: SearchSource = {
-  folders: [folder('f1', 'Science'), folder('f2', 'Chemistry archive', 'f1')],
-  notebooks: [notebook('n1', 'Organic Chemistry', 'f1'), notebook('n2', 'History')],
-  pages: [
-    page('p1', 'Alkanes', 'Saturated hydrocarbons. General formula CnH2n+2.', { notebookId: 'n1' }),
-    page('p2', 'Alkenes', 'Unsaturated hydrocarbons with a double bond.', { notebookId: 'n1', updatedAt: 5 }),
-    page('p3', 'The Printing Press', 'Gutenberg, around 1440. Movable type changed the café conversation.', { notebookId: 'n2' }),
-    page('p4', 'Chemistry reading list', 'Nothing yet.', { folderId: 'f1' }),
-    page('p5', 'Loose thoughts', 'A page at the top level about tide pools.'),
-  ],
+  notebooks: [notebook('n1', 'Organic Chemistry'), notebook('n2', 'History')],
+  pages,
+  pdfTexts: new Map([['f1', ['Cover page', 'Lecture 4: hydrocarbons and their reactions.', 'More hydrocarbons here.']]]),
+  fileNames: new Map([['f1', 'Lecture 4 slides']]),
+  fileUses: new Map([['f1', [pages[3]!]]]),
 };
 
-const found = (query: string) => searchWorkspace(source, query).map((hit) => `${hit.kind}:${hit.id}`);
+/** Each group as "notebook: hit, hit". */
+const grouped = (query: string) =>
+  searchEverything(source, query).groups.map((g) => `${g.notebook?.id ?? 'loose'}: ${g.hits.map((h) => (h.kind === 'page' ? h.page.id : `pdf ${h.attachmentId}`)).join(', ')}`);
 
-describe('global search', () => {
-  it('returns nothing for an empty or blank query', () => {
-    expect(found('')).toEqual([]);
-    expect(found('   ')).toEqual([]);
+describe('search', () => {
+  it('finds words inside the text of every notebook, grouped by notebook', () => {
+    expect(grouped('hydrocarbons')).toEqual(['n1: p1, p2', 'loose: pdf f1']);
   });
 
-  it('finds a page by a word in its text', () => {
-    expect(found('gutenberg')).toEqual(['page:p3']);
+  it('counts every match, not just the first', () => {
+    const results = searchEverything(source, 'hydrocarbons');
+    const alkanes = results.groups[0]!.hits[0]!;
+    expect(alkanes).toMatchObject({ kind: 'page', count: 2 });
+    expect(results.matches).toBe(2 + 1 + 2);
+    expect(results.total).toBe(3);
   });
 
-  it('finds pages, notebooks and folders by name', () => {
-    expect(found('chemistry').sort()).toEqual(['folder:f2', 'notebook:n1', 'page:p4']);
-  });
-
-  it('requires every word, in the title or the text', () => {
-    expect(found('hydrocarbons double')).toEqual(['page:p2']);
-    expect(found('alkanes formula')).toEqual(['page:p1']);
-    expect(found('hydrocarbons zebra')).toEqual([]);
+  it('needs every word, anywhere in the page', () => {
+    expect(grouped('unsaturated bond')).toEqual(['n1: p2']);
+    expect(grouped('unsaturated gutenberg')).toEqual([]);
   });
 
   it('ignores case and accents', () => {
-    expect(found('GUTENBERG')).toEqual(['page:p3']);
-    expect(found('cafe')).toEqual(['page:p3']);
-    expect(found('café')).toEqual(['page:p3']);
+    expect(grouped('CAFE')).toEqual(['n2: p3']);
+    expect(queryWords('  Élan   élan ')).toEqual(['elan']);
   });
 
-  it('puts a name match before a text match, and newer before older', () => {
-    const extra: SearchSource = { ...source, pages: [...source.pages, page('p6', 'Notes', 'Alkanes burn cleanly.', { updatedAt: 9 })] };
-    expect(searchWorkspace(extra, 'alkanes').map((hit) => hit.id)).toEqual(['p1', 'p6']);
-    // Equal score: the most recently edited first.
-    expect(found('hydrocarbons')).toEqual(['page:p2', 'page:p1']);
+  it('lists a notebook whose name matches, even with nothing inside it matching', () => {
+    const results = searchEverything(source, 'history');
+    expect(results.groups[0]).toMatchObject({ notebook: { id: 'n2' }, nameMatched: true, hits: [] });
   });
 
-  it('ranks an exact name above a name that only contains the query', () => {
-    expect(found('history')[0]).toBe('notebook:n2');
-    const hits = searchWorkspace({ ...source, pages: [...source.pages, page('p7', 'History of type', '')] }, 'history');
-    expect(hits.map((hit) => hit.id)).toEqual(['n2', 'p7']);
+  it('finds a PDF by its text and says on which pages', () => {
+    const hit = searchEverything(source, 'reactions').groups[0]!.hits[0]!;
+    expect(hit).toMatchObject({ kind: 'pdf', attachmentId: 'f1', firstPage: 2, pages: [2], count: 1, page: { id: 'p5' } });
   });
 
-  it('says where each result lives', () => {
-    const [hit] = searchWorkspace(source, 'gutenberg');
-    expect(hit).toMatchObject({ kind: 'page', title: 'The Printing Press', location: 'History' });
-    expect(searchWorkspace(source, 'reading list')[0]?.location).toBe('Science');
-    expect(searchWorkspace(source, 'tide')[0]?.location).toBe('');
-    expect(searchWorkspace(source, 'archive')[0]).toMatchObject({ kind: 'folder', location: 'Science' });
+  it('does not find a PDF that no live page shows', () => {
+    expect(grouped('reactions')).toHaveLength(1);
+    expect(searchEverything({ ...source, fileUses: new Map() }, 'reactions').groups).toEqual([]);
   });
 
-  it('gives a snippet around the match in the text, and none for a name-only match', () => {
-    expect(searchWorkspace(source, 'gutenberg')[0]?.snippet).toContain('Gutenberg, around 1440');
-    expect(searchWorkspace(source, 'reading list')[0]?.snippet).toBe('');
-  });
-
-  it('respects the limit', () => {
-    const many: SearchSource = { folders: [], notebooks: [], pages: Array.from({ length: 50 }, (_, i) => page(`x${i}`, `Note ${i}`, 'same words')) };
-    expect(searchWorkspace(many, 'same', 12)).toHaveLength(12);
-  });
-
-  it('treats the query as plain text, not as a pattern', () => {
-    expect(found('CnH2n+2.')).toEqual(['page:p1']);
-    expect(found('.*')).toEqual([]);
-    expect(found('[')).toEqual([]);
-  });
-
-  it('bounds the length of a query', () => {
-    expect(queryWords('a'.repeat(5000))[0]).toHaveLength(200);
+  it('returns nothing for an empty query', () => {
+    expect(searchEverything(source, '   ')).toEqual({ groups: [], total: 0, matches: 0 });
   });
 });
 
-describe('snippets', () => {
-  const long = `${'Intro words here. '.repeat(10)}The needle is in this sentence. ${'More words after. '.repeat(20)}`;
-
-  it('starts shortly before the match and marks the cut ends', () => {
-    const snippet = snippetAround(long, ['needle']);
-    expect(snippet.startsWith('…')).toBe(true);
-    expect(snippet.endsWith('…')).toBe(true);
-    expect(snippet).toContain('needle');
-    expect(snippet.length).toBeLessThanOrEqual(122);
+describe('matches and snippets', () => {
+  it('finds every place of every word, joined where they overlap', () => {
+    expect(findMatches('ab abc abcd', ['abc'])).toEqual([
+      [3, 6],
+      [7, 10],
+    ]);
+    expect(findMatches('cat catalog', ['cat', 'catalog'])).toEqual([
+      [0, 3],
+      [4, 11],
+    ]);
   });
 
-  it('shows a short text whole and flattens line breaks', () => {
-    expect(snippetAround('one\ntwo\n\nthree', ['two'])).toBe('one two three');
+  it('maps matches back to the original text when folding changes its length', () => {
+    // "ﬁ" folds to two letters: the match must still cover the original characters.
+    const text = 'Le ﬁlm café';
+    const [[start, end]] = findMatches(text, ['cafe']) as [[number, number]];
+    expect(text.slice(start, end)).toBe('café');
+  });
+
+  it('marks the matches inside a snippet', () => {
+    const text = `${'word '.repeat(30)}the needle is here and another needle there ${'more '.repeat(30)}`;
+    const matches = findMatches(text, ['needle']);
+    const snippet = snippetAt(text, matches, 0);
+    expect(snippet.text.startsWith('…')).toBe(true);
+    expect(snippet.marks).toHaveLength(2);
+    for (const [a, b] of snippet.marks) expect(snippet.text.slice(a, b)).toBe('needle');
+  });
+});
+
+describe('find in page', () => {
+  it('finds every match in the document by its position, including across marks', () => {
+    const schema = getSchema(schemaExtensions());
+    const doc = schema.nodeFromJSON({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Atoms are ' }, { type: 'text', text: 'atomic', marks: [{ type: 'bold' }] }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'No match here.' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'ATOM' }] },
+      ],
+    });
+    const matches = findInDoc(doc, ['atom']);
+    expect(matches).toHaveLength(3);
+    expect(matches.map((m) => doc.textBetween(m.from, m.to))).toEqual(['Atom', 'atom', 'ATOM']);
   });
 });

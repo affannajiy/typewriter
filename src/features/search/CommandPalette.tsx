@@ -1,14 +1,15 @@
-import { BookOpen, FilePlus, FileText, Folder as FolderIcon, GraduationCap, House, Library, type LucideIcon, Paperclip, Search, Settings, Tag, Trash2, Waypoints } from 'lucide-react';
+import { BookOpen, FilePlus, FileText, FileType2, Keyboard, Library, type LucideIcon, ListTree, Search, Settings, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { cx } from '@/components/ui/Button';
 import { useActiveEditor } from '@/features/editor/activeEditor';
 import { EDITOR_COMMANDS, formatShortcut } from '@/features/editor/commands';
-import { folderPath, notebookPath, pagePath } from '@/features/organisation/items';
+import { notebookPath } from '@/features/organisation/items';
 import { useItemActions } from '@/features/organisation/useItemActions';
-import { useWorkspace } from '@/hooks/useData';
+import { useSearchSource } from '@/hooks/useData';
 import { t } from '@/i18n/en';
-import { MAX_QUERY_LENGTH, type SearchHit, fold, queryWords, searchWorkspace } from './search';
+import { hitKey, hitPath } from './SearchResults';
+import { MAX_QUERY_LENGTH, fold, queryWords, searchEverything } from './search';
 
 type Group = 'results' | 'actions' | 'format';
 
@@ -24,20 +25,21 @@ interface PaletteItem {
   run: () => void;
 }
 
-const HIT_ICONS: Record<SearchHit['kind'], LucideIcon> = { page: FileText, notebook: BookOpen, folder: FolderIcon };
-const HIT_PATHS: Record<SearchHit['kind'], (id: string) => string> = { page: pagePath, notebook: notebookPath, folder: folderPath };
+/** Results shown here; the rest are one Enter away, on the home screen. */
+const PALETTE_RESULTS = 8;
 const GROUPS: Group[] = ['results', 'actions', 'format'];
 
 const matches = (label: string, words: string[]) => words.every((word) => fold(label).includes(word));
 
 /**
- * Search and commands in one place (Ctrl/Cmd + K): find a page by its name or
- * its text, go to a screen, or run a formatting command on the open page.
+ * Search and commands in one place (Ctrl/Cmd + K): find words in any
+ * notebook, page or PDF, go to a screen, or run a formatting command on the
+ * open page. "Show all results" opens the full, grouped list on the home screen.
  * A combobox with a listbox: focus stays in the field, the arrow keys move
  * the highlighted row, Enter runs it.
  */
 export function CommandPalette({ onClose }: { onClose: () => void }) {
-  const workspace = useWorkspace();
+  const source = useSearchSource();
   const editor = useActiveEditor();
   const navigate = useNavigate();
   const { newPage } = useItemActions();
@@ -61,13 +63,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const words = queryWords(query);
     const go = (id: string, label: string, icon: LucideIcon, to: string): PaletteItem => ({ id, group: 'actions', label: t.palette.goTo(label), icon, run: () => navigate(to) });
     const actions: PaletteItem[] = [
-      { id: 'new-page', group: 'actions', label: t.actions.newPage, icon: FilePlus, run: () => void newPage() },
-      go('home', t.nav.home, House, '/'),
-      go('library', t.nav.library, Library, '/library'),
-      go('tags', t.nav.tags, Tag, '/tags'),
-      go('files', t.nav.files, Paperclip, '/files'),
-      go('study', t.nav.study, GraduationCap, '/study'),
-      go('graph', t.nav.graph, Waypoints, '/graph'),
+      { id: 'new-page', group: 'actions', label: t.actions.newLoosePage, icon: FilePlus, run: () => void newPage() },
+      go('notebooks', t.nav.notebooks, Library, '/'),
+      go('typing', t.nav.typingTest, Keyboard, '/typing'),
       go('trash', t.nav.trash, Trash2, '/trash'),
       go('settings', t.nav.settings, Settings, '/settings'),
     ];
@@ -82,17 +80,33 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         }))
       : [];
     if (words.length === 0) return [...actions, ...format];
-    const results: PaletteItem[] = (workspace ? searchWorkspace(workspace, query, 12) : []).map((hit) => ({
-      id: `${hit.kind}-${hit.id}`,
-      group: 'results',
-      label: hit.title,
-      icon: HIT_ICONS[hit.kind],
-      detail: hit.snippet || undefined,
-      hint: hit.location ? t.palette.kindIn(t.trash.kind[hit.kind], hit.location) : t.trash.kind[hit.kind],
-      run: () => navigate(HIT_PATHS[hit.kind](hit.id)),
-    }));
-    return [...results, ...[...actions, ...format].filter((item) => matches(item.label, words))];
-  }, [query, workspace, editor, navigate, newPage]);
+    const found = source ? searchEverything(source, query) : null;
+    const results: PaletteItem[] = [];
+    for (const group of found?.groups ?? []) {
+      const where = group.notebook?.name ?? t.library.loosePages;
+      if (group.nameMatched && group.notebook) {
+        const { id } = group.notebook;
+        results.push({ id: `notebook-${id}`, group: 'results', label: group.notebook.name, icon: BookOpen, hint: t.trash.kind.notebook, run: () => navigate(notebookPath(id)) });
+      }
+      for (const hit of group.hits) {
+        const snippet = hit.kind === 'page' ? hit.snippets[0] : hit.snippet;
+        results.push({
+          id: hitKey(hit),
+          group: 'results',
+          label: hit.kind === 'page' ? hit.page.title : hit.name.text,
+          icon: hit.kind === 'page' ? FileText : FileType2,
+          detail: snippet?.text || undefined,
+          hint: hit.kind === 'page' ? where : t.search.inPdf(hit.page.title, null),
+          run: () => navigate(hitPath(hit, query)),
+        });
+      }
+    }
+    const shown = results.slice(0, PALETTE_RESULTS);
+    if (found && (results.length > PALETTE_RESULTS || found.total > 0)) {
+      shown.push({ id: 'all-results', group: 'results', label: t.search.showAll(found.total), icon: ListTree, run: () => navigate(`/?q=${encodeURIComponent(query.trim())}`) });
+    }
+    return [...shown, ...[...actions, ...format].filter((item) => matches(item.label, words))];
+  }, [query, source, editor, navigate, newPage]);
 
   const index = Math.min(active, Math.max(items.length - 1, 0));
   const optionId = (item: PaletteItem) => `${listId}-${item.id}`;

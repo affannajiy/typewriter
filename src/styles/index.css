@@ -7,7 +7,9 @@
 @import './tokens.css';
 @import './editor.css';
 @import './reader.css';
-@import './study.css';
+@import './math.css';
+@import './search.css';
+@import './typing.css';
 
 /* Map the semantic tokens to Tailwind names: bg-surface, text-muted, ... */
 @theme inline {

@@ -20,7 +20,7 @@ function watchPolicy(page: Page): string[] {
 
 async function newPageWithTitle(page: Page, title: string) {
   await page.goto('./');
-  await page.getByRole('main').getByRole('button', { name: 'New page' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'New loose page' }).click();
   await page.getByLabel('Page title').fill(title);
   await page.getByLabel('Page text').click();
 }
@@ -114,11 +114,14 @@ test('a PDF is kept in a page, read, highlighted with a note, and the highlight 
   if (!(await notes.isVisible())) await page.getByRole('button', { name: 'Show highlights and notes' }).click();
   await expect(notes.getByLabel('Note on the highlight on page 1')).toHaveValue('Equation in lecture 3.');
 
-  // Files lists it with the page it is in.
-  await page.goto('./#/files');
-  const row = page.getByRole('listitem').filter({ hasText: 'Biology reading' });
-  await expect(row.getByRole('link', { name: 'Seminar' })).toBeVisible();
-  await expect(row.getByText(/PDF · 2 pages/)).toBeVisible();
+  // Search finds words inside the PDF, says on which page, and opens the reader there with the words marked.
+  await page.goto('./');
+  await page.getByRole('searchbox', { name: 'Search all notebooks' }).fill('chlorophyll');
+  const result = page.getByRole('region', { name: 'Loose pages' }).getByRole('link', { name: /Biology reading/ });
+  await expect(result).toContainText('PDF in “Seminar” · page 2');
+  await result.click();
+  await expect(page.locator('[data-page="2"] .tn-pdf-match').first()).toHaveText(/chlorophyll/i);
+  await expect(page.locator('[data-page="2"]')).toBeInViewport();
 
   expect(refused).toEqual([]);
 });
@@ -126,7 +129,7 @@ test('a PDF is kept in a page, read, highlighted with a note, and the highlight 
 test.describe('with a microphone', () => {
   test.use({ permissions: ['microphone'] });
 
-  test('a recording is made in a page, plays back, survives a reload, and is listed and downloadable in Files', async ({ page }) => {
+  test('a recording is made in a page, plays back, survives a reload, and downloads from its block', async ({ page }) => {
     const refused = watchPolicy(page);
     await newPageWithTitle(page, 'Lecture 4');
     await slash(page, 'record');
@@ -148,15 +151,8 @@ test.describe('with a microphone', () => {
     await page.reload();
     await expect(page.getByLabel(/^Play Recording /)).toBeVisible();
 
-    await page.goto('./#/files');
-    const row = page.getByRole('listitem').filter({ hasText: /Recording · 0:0/ });
-    await expect(row.getByRole('link', { name: 'Lecture 4' })).toBeVisible();
-    await row.getByRole('button', { name: /^Play / }).click();
-    await expect(row.locator('audio')).toBeVisible();
-
-    await row.getByRole('button', { name: /^Actions for / }).click();
     const download = page.waitForEvent('download');
-    await page.getByRole('menuitem', { name: 'Download' }).click();
+    await page.getByRole('button', { name: /^Download Recording / }).click();
     expect((await download).suggestedFilename()).toMatch(/^Recording .+\.(webm|ogg|m4a)$/);
 
     expect(refused).toEqual([]);

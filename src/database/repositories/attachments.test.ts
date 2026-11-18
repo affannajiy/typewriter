@@ -196,7 +196,7 @@ describe('files in backups', () => {
     await db.delete();
     await db.open();
     const file = parseBackup(text);
-    expect(file.formatVersion).toBe(2);
+    expect(file.formatVersion).toBe(3);
     expect(file.data.attachments).toHaveLength(2);
     const report = await restoreBackup(file, 'merge-skip');
     expect(report.added).toBe(4); // one page, two files, one highlight
@@ -304,7 +304,7 @@ describe('schema version 4', () => {
     expect(upgraded.verno).toBe(SCHEMA_VERSION);
     expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(4);
     expect(await upgraded.pages.get('p1')).toMatchObject({ title: 'Kept', plainText: 'Notes' });
-    expect(await upgraded.writingDays.get('2026-11-17')).toMatchObject({ words: 12 });
+    // The words-written log was removed in schema version 6.
     expect(await upgraded.attachments.count()).toBe(0);
     expect(await upgraded.attachmentData.count()).toBe(0);
     expect(await upgraded.annotations.count()).toBe(0);

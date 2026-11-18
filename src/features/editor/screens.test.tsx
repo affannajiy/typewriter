@@ -158,11 +158,11 @@ describe('search and commands', () => {
         </MemoryRouter>
       </ToastProvider>,
     );
-    return { onClose, input: screen.getByRole('combobox', { name: 'Search pages, or type a command' }) };
+    return { onClose, input: screen.getByRole('combobox', { name: 'Search all notebooks, or type a command' }) };
   }
 
   it('finds a page by its text and opens it with the keyboard', async () => {
-    const notebook = await createNotebook({ name: 'History', description: '', coverColour: '#795b43', folderId: null });
+    const notebook = await createNotebook({ name: 'History', description: '', coverColour: '#795b43' });
     const page = await createPage({ notebookId: notebook.id, title: 'The Printing Press' });
     await savePageDraft(page.id, { title: 'The Printing Press', content: textToDoc('Gutenberg, around 1440.') });
     await createPage({ title: 'Tide pools' });
@@ -172,7 +172,7 @@ describe('search and commands', () => {
     const option = await screen.findByRole('option', { name: /The Printing Press/ });
     expect(option).toHaveAttribute('aria-selected', 'true');
     expect(option).toHaveTextContent('Gutenberg, around 1440.');
-    expect(option).toHaveTextContent('Page in History');
+    expect(option).toHaveTextContent('History');
     expect(input).toHaveAttribute('aria-activedescendant', option.id);
     expect(screen.queryByRole('option', { name: /Tide pools/ })).not.toBeInTheDocument();
 
@@ -184,7 +184,7 @@ describe('search and commands', () => {
   it('lists places to go before anything is typed, and moves with the arrow keys', async () => {
     const { input } = renderPalette();
     const options = screen.getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['New page', 'Go to Home', 'Go to Library', 'Go to Tags', 'Go to Files', 'Go to Study', 'Go to Graph', 'Go to Trash', 'Go to Settings']);
+    expect(options.map((option) => option.textContent)).toEqual(['New loose page', 'Go to Notebooks', 'Go to Typing test', 'Go to Trash', 'Go to Settings']);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
     input.focus();
     await userEvent.keyboard('{ArrowDown}{ArrowDown}');

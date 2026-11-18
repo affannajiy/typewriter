@@ -3,6 +3,7 @@ import { MAX_ATTACHMENT_BYTES, addAttachment, readAttachmentBytes } from '@/data
 import { RepositoryError } from '@/database/repositories/common';
 import { t } from '@/i18n/en';
 import { openPdf } from '@/services/pdf';
+import { indexPdfs } from '@/services/pdfIndex';
 import { type FinishedRecording, audioExtension } from '@/services/recorder';
 import { downloadBlob } from '@/services/storage';
 import type { Attachment } from '@/types/models';
@@ -31,7 +32,10 @@ export async function addPdfFile(file: File): Promise<Attachment> {
     console.error(error);
     throw new NotPdfError();
   }
-  return addAttachment({ kind: 'pdf', name: withoutExtension(file.name), mimeType: 'application/pdf', bytes, pageCount });
+  const attachment = await addAttachment({ kind: 'pdf', name: withoutExtension(file.name), mimeType: 'application/pdf', bytes, pageCount });
+  // Its text is read in the background, so search can find words in it.
+  indexPdfs();
+  return attachment;
 }
 
 /** The length of a sound file, read by the browser. Null when it cannot tell within a few seconds. */

@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SCHEMA_VERSION, db } from '@/database/db';
-import { createFolder, listFolders } from '@/database/repositories/folders';
 import { createNotebook, listNotebooks } from '@/database/repositories/notebooks';
-import { createPage, getPage, listPages, renamePage, setPageTags } from '@/database/repositories/pages';
+import { createPage, getPage, listPages, renamePage } from '@/database/repositories/pages';
 import { readSettings, writeSetting } from '@/database/repositories/settings';
-import { createTag } from '@/database/repositories/tags';
 import { trashItem } from '@/database/repositories/trash';
 import { getDrawing, saveDrawing } from '@/database/repositories/drawings';
 import { BackupError, analyseBackup, createBackup, latestSnapshot, parseBackup, restoreBackup, restoreSnapshot, serialiseBackup } from './backup';
@@ -15,15 +13,12 @@ async function reset() {
 }
 
 async function seed() {
-  const folder = await createFolder({ name: 'School', parentId: null });
-  const notebook = await createNotebook({ name: 'Chemistry', description: 'Term 1', coverColour: '#795b43', folderId: folder.id });
-  const tag = await createTag('Exam');
+  const notebook = await createNotebook({ name: 'Chemistry', description: 'Term 1', coverColour: '#795b43' });
   const page = await createPage({ notebookId: notebook.id, title: 'Atoms' });
-  await setPageTags(page.id, [tag.id]);
   const trashed = await createPage({ title: 'Old draft' });
   await trashItem({ kind: 'page', id: trashed.id });
   await writeSetting('theme', 'midnight');
-  return { folder, notebook, tag, page, trashed };
+  return { notebook, page, trashed };
 }
 
 beforeEach(reset);
@@ -35,11 +30,11 @@ describe('backup round trip', () => {
     await reset();
 
     const file = parseBackup(text);
-    expect(await analyseBackup(file)).toMatchObject({ counts: { folders: 1, notebooks: 1, pages: 2, tags: 1 }, duplicates: 0, workspaceIsEmpty: true });
+    expect(await analyseBackup(file)).toMatchObject({ counts: { notebooks: 1, pages: 2, files: 0 }, duplicates: 0, workspaceIsEmpty: true, droppedLegacy: false });
     const report = await restoreBackup(file, 'merge-skip');
 
-    expect(report).toMatchObject({ added: 5, updated: 0, skipped: 0, repaired: 0 });
-    expect(await getPage(seeded.page.id)).toMatchObject({ title: 'Atoms', notebookId: seeded.notebook.id, tagIds: [seeded.tag.id] });
+    expect(report).toMatchObject({ added: 3, updated: 0, skipped: 0, repaired: 0 });
+    expect(await getPage(seeded.page.id)).toMatchObject({ title: 'Atoms', notebookId: seeded.notebook.id });
     expect((await getPage(seeded.trashed.id))?.deletedAt).not.toBeNull();
     expect((await readSettings()).theme).toBe('midnight');
   });
@@ -50,9 +45,9 @@ describe('restore modes', () => {
     const { page } = await seed();
     const file = await createBackup();
     await renamePage(page.id, 'Edited locally');
-    expect((await analyseBackup(file)).duplicates).toBe(5);
+    expect((await analyseBackup(file)).duplicates).toBe(3);
     const report = await restoreBackup(file, 'merge-skip');
-    expect(report).toMatchObject({ added: 0, skipped: 5 });
+    expect(report).toMatchObject({ added: 0, skipped: 3 });
     expect((await getPage(page.id))?.title).toBe('Edited locally');
   });
 
@@ -64,7 +59,7 @@ describe('restore modes', () => {
     incoming.updatedAt += 60_000;
     file.data.notebooks.find((n) => n.id === notebook.id)!.name = 'Same age, ignored';
     const report = await restoreBackup(file, 'merge-newer');
-    expect(report).toMatchObject({ added: 0, updated: 1, skipped: 4 });
+    expect(report).toMatchObject({ added: 0, updated: 1, skipped: 2 });
     expect((await getPage(page.id))?.title).toBe('Newer in backup');
     expect((await listNotebooks())[0]?.name).toBe('Chemistry');
   });
@@ -83,7 +78,7 @@ describe('restore modes', () => {
     const snapshot = await latestSnapshot();
     await restoreSnapshot(snapshot!.id);
     expect((await listPages()).map((p) => p.title)).toEqual(['Only on this device']);
-    expect(await listFolders()).toHaveLength(0);
+    expect(await listNotebooks()).toHaveLength(0);
     expect(await latestSnapshot()).toBeNull();
   });
 
@@ -97,24 +92,53 @@ describe('restore modes', () => {
     await expect(restoreBackup(file, 'replace')).rejects.toThrow('disk full');
     failure.mockRestore();
     expect((await listPages()).map((p) => p.id)).toEqual([mine.id]);
-    expect(await listFolders()).toHaveLength(0);
+    expect(await listNotebooks()).toHaveLength(0);
   });
 
-  it('moves items with a missing parent to the top level and cuts folder cycles', async () => {
+  it('makes a page whose notebook is missing a loose page', async () => {
     await seed();
     const file = await createBackup();
     await reset();
-    const [folder] = file.data.folders;
-    file.data.folders.push({ ...folder!, id: 'loop-a', parentId: 'loop-b' }, { ...folder!, id: 'loop-b', parentId: 'loop-a' });
-    file.data.notebooks[0]!.folderId = 'gone';
-    file.data.pages[0]!.tagIds = ['gone-tag'];
+    file.data.notebooks = [];
 
     const report = await restoreBackup(file, 'merge-skip');
-    expect(report.repaired).toBe(2);
-    expect((await listNotebooks())[0]?.folderId).toBeNull();
-    expect((await getPage(file.data.pages[0]!.id))?.tagIds).toEqual([]);
-    const loops = (await listFolders()).filter((f) => f.id.startsWith('loop-'));
-    expect(loops.filter((f) => f.parentId === null)).toHaveLength(1);
+    expect(report.repaired).toBe(1);
+    expect((await getPage(file.data.pages[0]!.id))?.notebookId).toBeNull();
+  });
+});
+
+describe('backups made before 0.8.0', () => {
+  it('restore notebooks and pages, and leave out folders, tags, flashcards and writing stats', async () => {
+    const { notebook, page } = await seed();
+    const raw = JSON.parse(serialiseBackup(await createBackup())) as { formatVersion: number; schemaVersion: number; data: Record<string, unknown> & { notebooks: Record<string, unknown>[]; pages: Record<string, unknown>[] } };
+    raw.formatVersion = 2;
+    raw.schemaVersion = 5;
+    raw.data.folders = [{ id: 'f1', name: 'School', parentId: null }];
+    raw.data.tags = [{ id: 't1', name: 'Exam', colour: '#123456' }];
+    raw.data.decks = [{ id: 'd1' }];
+    raw.data.flashcards = [];
+    raw.data.writingDays = [{ date: '2026-11-01', words: 3 }];
+    raw.data.notebooks[0]!.folderId = 'f1';
+    raw.data.notebooks[0]!.tagIds = ['t1'];
+    const atoms = raw.data.pages.find((p) => p.id === page.id)!;
+    atoms.tagIds = ['t1'];
+    atoms.folderId = null;
+    atoms.content = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'See ' }, { type: 'pageLink', attrs: { pageId: 'x', title: 'Bonds' } }] }] };
+    const loose = raw.data.pages.find((p) => p.id !== page.id)!;
+    loose.folderId = 'f1';
+    loose.tagIds = [];
+
+    const file = parseBackup(JSON.stringify(raw));
+    expect(file.droppedLegacy).toBe(true);
+    expect(file.data).not.toHaveProperty('folders');
+    expect(file.data.notebooks[0]).not.toHaveProperty('folderId');
+    expect(file.data.notebooks[0]).not.toHaveProperty('tagIds');
+    await reset();
+    expect(await analyseBackup(file)).toMatchObject({ droppedLegacy: true, counts: { notebooks: 1, pages: 2 } });
+    await restoreBackup(file, 'merge-skip');
+    expect(await getPage(page.id)).toMatchObject({ notebookId: notebook.id, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'See Bonds' }] }] } });
+    expect(await getPage(page.id)).not.toHaveProperty('tagIds');
+    expect((await getPage(loose.id as string))?.notebookId).toBeNull();
   });
 });
 
@@ -204,7 +228,7 @@ describe('drawings in a backup', () => {
     const file = parseBackup(JSON.stringify(raw));
     expect(file.data.drawings).toEqual([]);
     await reset();
-    await expect(restoreBackup(file, 'replace')).resolves.toMatchObject({ added: 5 });
+    await expect(restoreBackup(file, 'replace')).resolves.toMatchObject({ added: 3 });
   });
 
   it('a damaged stroke rejects the file and says where', async () => {

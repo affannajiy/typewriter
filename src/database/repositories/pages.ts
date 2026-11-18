@@ -1,8 +1,6 @@
 import { db } from '@/database/db';
 import type { DocNode, Id, Page, PageLayout, PageLocation } from '@/types/models';
-import { countWords } from '@/utils/text';
 import { RepositoryError, bump, cleanName, found, freshVersion, isLive, notTrashed, now, orderAfter } from './common';
-import { addWordsWritten } from './writing';
 
 export const EMPTY_DOC: DocNode = { type: 'doc', content: [{ type: 'paragraph' }] };
 export const UNTITLED_PAGE = 'Untitled';
@@ -14,9 +12,8 @@ export function docToPlainText(doc: DocNode): string {
     if (typeof node.text === 'string') return node.text;
     // A line break inside a block separates words, so it must not vanish.
     if (node.type === 'hardBreak') return '\n';
-    // An equation is searchable by its source; a link by the title it was made with.
+    // An equation is searchable by its source.
     if (node.type === 'mathInline' || node.type === 'mathBlock') return String(node.attrs?.latex ?? '');
-    if (node.type === 'pageLink') return String(node.attrs?.title ?? '');
     return (node.content ?? []).map(visit).join('');
   };
   const walk = (node: DocNode) => {
@@ -51,26 +48,18 @@ export async function listPages(): Promise<Page[]> {
 
 export const getPage = (id: Id) => db.pages.get(id);
 
-const sameLocation = (page: PageLocation, location: PageLocation) =>
-  page.notebookId === location.notebookId && page.folderId === location.folderId;
+const sameLocation = (page: PageLocation, location: PageLocation) => page.notebookId === location.notebookId;
 
 async function checkLocation(location: PageLocation): Promise<void> {
-  if (location.notebookId !== null && location.folderId !== null) {
-    throw new RepositoryError('invalid-move', 'A page has one location: a notebook or a folder');
-  }
   if (location.notebookId !== null) {
     const notebook = found(await db.notebooks.get(location.notebookId), 'Destination notebook');
     if (!isLive(notebook)) throw new RepositoryError('invalid-move', 'The destination notebook is in the Trash');
   }
-  if (location.folderId !== null) {
-    const folder = found(await db.folders.get(location.folderId), 'Destination folder');
-    if (!isLive(folder)) throw new RepositoryError('invalid-move', 'The destination folder is in the Trash');
-  }
 }
 
 export async function createPage(input: Partial<PageLocation> & { title?: string } = {}): Promise<Page> {
-  const location: PageLocation = { notebookId: input.notebookId ?? null, folderId: input.folderId ?? null };
-  return db.transaction('rw', db.pages, db.notebooks, db.folders, async () => {
+  const location: PageLocation = { notebookId: input.notebookId ?? null };
+  return db.transaction('rw', db.pages, db.notebooks, async () => {
     await checkLocation(location);
     const siblings = (await listPages()).filter((p) => sameLocation(p, location));
     const page: Page = {
@@ -81,7 +70,6 @@ export async function createPage(input: Partial<PageLocation> & { title?: string
       content: EMPTY_DOC,
       plainText: '',
       layout: 'continuous',
-      tagIds: [],
       favourite: false,
       pinned: false,
       order: orderAfter(siblings),
@@ -97,19 +85,16 @@ export async function createPage(input: Partial<PageLocation> & { title?: string
  * transaction, so the caller may then show "Saved".
  */
 export async function savePageDraft(id: Id, draft: { title: string; content: DocNode }): Promise<void> {
-  await db.transaction('rw', db.pages, db.writingDays, async () => {
+  await db.transaction('rw', db.pages, async () => {
     const page = found(await db.pages.get(id), 'Page');
-    const plainText = docToPlainText(draft.content);
     await patchPages(
       [id],
       bump(page, {
         title: cleanName(draft.title, UNTITLED_PAGE),
         content: draft.content,
-        plainText,
+        plainText: docToPlainText(draft.content),
       }),
     );
-    // Words written today: what this save added to the page. Deleting does not subtract.
-    await addWordsWritten(countWords(plainText) - countWords(page.plainText));
   });
 }
 
@@ -127,13 +112,6 @@ export async function setPageFlags(id: Id, flags: { favourite?: boolean; pinned?
   });
 }
 
-export async function setPageTags(id: Id, tagIds: Id[]): Promise<void> {
-  await db.transaction('rw', db.pages, async () => {
-    const page = found(await db.pages.get(id), 'Page');
-    await patchPages([id], bump(page, { tagIds: [...new Set(tagIds)] }));
-  });
-}
-
 export async function setPageLayout(id: Id, layout: PageLayout): Promise<void> {
   await db.transaction('rw', db.pages, async () => {
     const page = found(await db.pages.get(id), 'Page');
@@ -148,11 +126,36 @@ export async function markPageOpened(id: Id): Promise<void> {
 
 /** Moving keeps the page ID, so links and references to the page survive. */
 export async function movePage(id: Id, location: PageLocation): Promise<void> {
-  await db.transaction('rw', db.pages, db.notebooks, db.folders, async () => {
+  await db.transaction('rw', db.pages, db.notebooks, async () => {
     const page = found(await db.pages.get(id), 'Page');
     await checkLocation(location);
     if (sameLocation(page, location)) return;
     const siblings = (await listPages()).filter((p) => sameLocation(p, location));
     await patchPages([id], bump(page, { ...location, order: orderAfter(siblings) }));
+  });
+}
+
+/**
+ * Put a file into its empty block in the stored page: used when a recording
+ * finishes after its page was closed, so the editor is no longer there to do
+ * it. The block is found by its block ID. If it is gone, or was never saved,
+ * a new block with the file goes at the end of the page, so the recording
+ * is never left where no page shows it.
+ */
+export async function fillFileBlock(pageId: Id, blockId: string | null, kind: 'audio' | 'pdf', attachmentId: Id): Promise<void> {
+  await db.transaction('rw', db.pages, async () => {
+    const page = await db.pages.get(pageId);
+    if (!page) return;
+    let filled = false;
+    const visit = (node: DocNode): DocNode => {
+      if (!filled && blockId !== null && node.type === kind && node.attrs?.id === blockId && !node.attrs?.attachmentId) {
+        filled = true;
+        return { ...node, attrs: { ...node.attrs, attachmentId } };
+      }
+      return node.content ? { ...node, content: node.content.map(visit) } : node;
+    };
+    let content = visit(page.content);
+    if (!filled) content = { ...content, content: [...(content.content ?? []), { type: kind, attrs: { attachmentId } }] };
+    await patchPages([pageId], bump(page, { content, plainText: docToPlainText(content) }));
   });
 }

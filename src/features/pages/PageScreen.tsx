@@ -1,27 +1,23 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Files, Layers, Link2, Maximize, Minimize, Pin, ScrollText, Star, Trash2, TriangleAlert, Volume2, VolumeX } from 'lucide-react';
+import { Files, Maximize, Minimize, Pin, ScrollText, Search, Star, Trash2, TriangleAlert, Volume2, VolumeX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { Button, IconButton, cx } from '@/components/ui/Button';
 import { Breadcrumbs, type Crumb, LoadingBlock, Segmented } from '@/components/ui/Layout';
-import { createPage, docToPlainText, getPage, markPageOpened, savePageDraft, setPageFlags, setPageLayout, setPageTags } from '@/database/repositories/pages';
+import { docToPlainText, getPage, markPageOpened, savePageDraft, setPageFlags, setPageLayout } from '@/database/repositories/pages';
 import { writeSetting } from '@/database/repositories/settings';
 import { restoreBatch } from '@/database/repositories/trash';
 import { DrawingEditor } from '@/features/drawing/DrawingEditor';
 import { RichEditor } from '@/features/editor/RichEditor';
-import { getActiveEditor } from '@/features/editor/activeEditor';
-import { type LinkTarget, backlinks, matchTargets } from '@/features/links/links';
-import { CardDialog } from '@/features/study/StudyDialogs';
 import { formatShortcut } from '@/features/editor/commands';
 import { isReadableDoc } from '@/features/editor/extensions';
 import { ItemMenu } from '@/features/organisation/ItemMenu';
-import { TagPicker } from '@/features/organisation/TagPicker';
-import { folderPath, folderTrail, notebookPath, pageLocationName, pagePath } from '@/features/organisation/items';
+import { notebookPath, parentPath } from '@/features/organisation/items';
 import { useGuarded } from '@/features/organisation/useItemActions';
 import { type Workspace, useSettings, useWorkspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 import { type Autosaver, type SaveStatus, createAutosaver } from '@/services/autosave';
-import type { DocNode, Id, Page, PageLayout } from '@/types/models';
+import type { DocNode, Page, PageLayout } from '@/types/models';
 import { NotFound } from './NotFound';
 import { SaveIndicator } from './SaveIndicator';
 import { countCharacters, countWords } from './plainDoc';
@@ -45,10 +41,8 @@ export default function PageScreen() {
 
 function crumbsFor(page: Page, workspace: Workspace): Crumb[] {
   const notebook = page.notebookId ? workspace.notebooks.find((n) => n.id === page.notebookId) : undefined;
-  const trail = folderTrail(notebook ? notebook.folderId : page.folderId, workspace.folders);
   return [
-    { label: t.library.title, to: '/library' },
-    ...trail.map((f) => ({ label: f.name, to: folderPath(f.id) })),
+    { label: t.library.title, to: '/' },
     ...(notebook ? [{ label: notebook.name, to: notebookPath(notebook.id) }] : []),
     { label: page.title },
   ];
@@ -76,7 +70,20 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
   const [sheets, setSheets] = useState(1);
   const [openDrawing, setOpenDrawing] = useState<string | null>(null);
   const [focus, setFocus] = useState(false);
-  const [cardFront, setCardFront] = useState<string | null>(null);
+  // A search result opens the page with its words (`?q=`): the find bar shows every match.
+  const [params, setParams] = useSearchParams();
+  const [find, setFind] = useState<string | null>(() => params.get('q'));
+  const closeFind = useCallback(() => {
+    setFind(null);
+    setParams({}, { replace: true });
+  }, [setParams]);
+  // A new search for this same page, from the palette, while it is open.
+  const asked = params.get('q');
+  const [lastAsked, setLastAsked] = useState(asked);
+  if (asked !== lastAsked) {
+    setLastAsked(asked);
+    if (asked !== null) setFind(asked);
+  }
   const saver = useRef<Autosaver<Draft> | null>(null);
   const latestDraft = useRef(draft);
   const inTrash = page.deletedAt !== null;
@@ -157,35 +164,6 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
 
   const typewriter = useTypewriter(settings);
 
-  // The "[[" menu reads the newest workspace; the editor set its handler up once.
-  const workspaceRef = useRef(workspace);
-  useEffect(() => {
-    workspaceRef.current = workspace;
-  }, [workspace]);
-  const linkTargets = useCallback(
-    (query: string): LinkTarget[] => {
-      const current = workspaceRef.current;
-      const targets = current.pages.filter((p) => p.id !== page.id).map((p) => ({ id: p.id, title: p.title, location: pageLocationName(p, current), updatedAt: p.updatedAt }));
-      return matchTargets(targets, query);
-    },
-    [page.id],
-  );
-  // A page made from the "[[" menu goes where this page is.
-  const createLinkedPage = useCallback(async (title: string): Promise<Id> => (await createPage({ title, notebookId: page.notebookId, folderId: page.folderId })).id, [page.notebookId, page.folderId]);
-
-  const linkedFrom = useMemo(() => backlinks(page.id, workspace.pages), [page.id, workspace.pages]);
-
-  /** A flashcard starts from the selected text, or else from the block that holds the caret. */
-  const makeCard = () => {
-    const editor = getActiveEditor();
-    let front = '';
-    if (editor) {
-      const { from, to, $from } = editor.state.selection;
-      front = from === to ? $from.parent.textContent : editor.state.doc.textBetween(from, to, '\n', ' ');
-    }
-    setCardFront(front.trim().slice(0, 1000));
-  };
-
   const toggleSound = () => {
     const next = !settings.typingSound;
     if (next) typewriter.feedPaper();
@@ -214,9 +192,8 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
         {!inTrash && (
           <div className="ms-auto flex items-center">
             <IconButton icon={Star} filled={page.favourite} pressed={page.favourite} label={t.organise.favourite} onClick={() => void guarded(() => setPageFlags(page.id, { favourite: !page.favourite }))} />
-            {readable && <IconButton icon={Layers} label={t.study.makeCard} title={`${t.study.makeCard}: ${t.study.makeCardHint}`} onMouseDown={(event) => event.preventDefault()} onClick={makeCard} />}
             <IconButton icon={Pin} filled={page.pinned} pressed={page.pinned} label={t.organise.pin} onClick={() => void guarded(() => setPageFlags(page.id, { pinned: !page.pinned }))} />
-            <ItemMenu noRename entry={{ kind: 'page', item: page }} workspace={workspace} onTrashed={() => navigate(page.notebookId ? notebookPath(page.notebookId) : folderPath(page.folderId))} />
+            <ItemMenu noRename entry={{ kind: 'page', item: page }} workspace={workspace} onTrashed={() => navigate(parentPath(page))} />
           </div>
         )}
       </div>
@@ -252,14 +229,8 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
           typewriter.onInput(e);
           change({ title: e.target.value });
         }}
-        className={cx('w-full bg-transparent py-1 font-serif text-4xl font-semibold text-ink placeholder:text-muted/60', quietFocus)}
+        className={cx('mb-4 w-full bg-transparent py-1 font-serif text-4xl font-semibold text-ink placeholder:text-muted/60', quietFocus)}
       />
-
-      {!inTrash && (
-        <div data-chrome className="mt-2 mb-4">
-          <TagPicker tags={workspace.tags} selected={page.tagIds} onChange={(tagIds) => void guarded(() => setPageTags(page.id, tagIds))} />
-        </div>
-      )}
 
       {readable ? (
         <RichEditor
@@ -271,40 +242,16 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
           typewriter={typewriter}
           onChange={changeContent}
           onPageCount={setSheets}
+          find={find}
+          onCloseFind={closeFind}
           pageId={page.id}
           onOpenDrawing={setOpenDrawing}
           textMetrics={`${settings.editorFont} ${settings.editorSize} ${settings.editorLeading} ${settings.paperStyle}`}
-          linkTargets={linkTargets}
-          onCreateLinkedPage={createLinkedPage}
         />
       ) : (
         // The stored text, exactly as it is. Nothing on this screen can change the page.
         <pre className="flex-1 py-2 font-serif text-lg leading-[1.7] whitespace-pre-wrap text-ink">{page.plainText}</pre>
       )}
-
-      {!inTrash && (
-        <section data-chrome aria-labelledby="backlinks-title" className="mt-6 border-t border-line pt-3">
-          <h2 id="backlinks-title" className="mb-1 flex items-center gap-2 text-sm font-semibold text-ink">
-            <Link2 size={16} aria-hidden className="text-muted" />
-            {t.links.backlinks}
-          </h2>
-          {linkedFrom.length === 0 ? (
-            <p className="text-sm text-muted">{t.links.noBacklinks}</p>
-          ) : (
-            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {linkedFrom.map((other) => (
-                <li key={other.id}>
-                  <Link to={pagePath(other.id)} className="text-ink underline decoration-accent decoration-2 underline-offset-2 hover:bg-accent-soft">
-                    {other.title}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {cardFront !== null && <CardDialog card={null} front={cardFront} sourcePageId={page.id} onClose={() => setCardFront(null)} />}
 
       {openDrawing && !locked && <DrawingEditor drawingId={openDrawing} pageId={page.id} onClose={() => setOpenDrawing(null)} />}
 
@@ -334,6 +281,7 @@ function PageEditor({ page, workspace }: { page: Page; workspace: Workspace }) {
               onChange={(layout) => void guarded(() => setPageLayout(page.id, layout))}
             />
           )}
+          {readable && <IconButton icon={Search} pressed={find !== null} label={t.search.find.open} onClick={() => (find === null ? setFind('') : closeFind())} />}
           {!inTrash && <IconButton icon={settings.typingSound ? Volume2 : VolumeX} pressed={settings.typingSound} label={t.sound.toggle} onClick={toggleSound} />}
           <IconButton icon={focus ? Minimize : Maximize} pressed={focus} label={t.page.focus} title={`${t.page.focus} (${formatShortcut('Mod+Shift+F')})`} onClick={() => setFocus(!focus)} />
         </div>

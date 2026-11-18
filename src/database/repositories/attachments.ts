@@ -113,6 +113,7 @@ async function deleteAttachmentRows(ids: Id[]): Promise<void> {
   await db.attachments.bulkDelete(ids);
   await db.attachmentData.bulkDelete(ids);
   await db.annotations.where('attachmentId').anyOf(ids).delete();
+  await db.pdfTexts.bulkDelete(ids);
 }
 
 /**
@@ -120,7 +121,7 @@ async function deleteAttachmentRows(ids: Id[]): Promise<void> {
  * page, in the Trash or not, still has a block for it.
  */
 export async function deleteAttachment(id: Id): Promise<void> {
-  await db.transaction('rw', [db.pages, db.attachments, db.attachmentData, db.annotations], async () => {
+  await db.transaction('rw', [db.pages, db.attachments, db.attachmentData, db.annotations, db.pdfTexts], async () => {
     found(await db.attachments.get(id), 'File');
     const pages = await db.pages.toArray();
     if (pages.some((page) => attachmentIdsIn(page.content).has(id))) throw new RepositoryError('file-in-use', 'File is used by a page');
@@ -131,7 +132,7 @@ export async function deleteAttachment(id: Id): Promise<void> {
 /**
  * Part of a permanent page deletion: the files those pages used that no other
  * page uses go with them. Must run inside a transaction that includes pages,
- * attachments, attachmentData and annotations, before the pages are deleted.
+ * attachments, attachmentData, annotations and pdfTexts, before the pages are deleted.
  */
 export async function deleteAttachmentsOnlyIn(pageIds: Id[]): Promise<number> {
   if (pageIds.length === 0) return 0;

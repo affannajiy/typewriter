@@ -1,12 +1,10 @@
 import { Editor } from '@tiptap/core';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/ui/Toast';
 import { db } from '@/database/db';
-import { addAttachment, getAttachment, listAttachments } from '@/database/repositories/attachments';
-import { createPage, savePageDraft } from '@/database/repositories/pages';
+import { listAttachments } from '@/database/repositories/attachments';
 import { RichEditor } from '@/features/editor/RichEditor';
 import { withBlockIds } from '@/features/editor/blockIds';
 import { BLOCK_COMMANDS, EDITOR_COMMANDS, filterCommands } from '@/features/editor/commands';
@@ -14,7 +12,6 @@ import { isReadableDoc, schemaExtensions } from '@/features/editor/extensions';
 import type { Typewriter } from '@/features/pages/useTypewriter';
 import { openPdf } from '@/services/pdf';
 import type { DocNode } from '@/types/models';
-import { FilesScreen } from './FilesScreen';
 
 vi.mock('@/services/pdf', () => ({ openPdf: vi.fn() }));
 const mockedOpen = vi.mocked(openPdf);
@@ -174,69 +171,5 @@ describe('the recording block', () => {
     expect(screen.queryByRole('button', { name: 'Record' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose a sound file' })).toBeInTheDocument();
     expect(screen.getByText(/This browser cannot record sound/)).toBeInTheDocument();
-  });
-});
-
-describe('the Files screen', () => {
-  const renderScreen = () =>
-    render(
-      <ToastProvider>
-        <MemoryRouter>
-          <FilesScreen />
-        </MemoryRouter>
-      </ToastProvider>,
-    );
-
-  it('says how to add files when there are none', async () => {
-    renderScreen();
-    expect(await screen.findByText('No files yet')).toBeInTheDocument();
-  });
-
-  it('shows where each file is used, filters by kind, and deletes only a file no page uses, after asking', async () => {
-    const used = await addAttachment({ kind: 'pdf', name: 'Syllabus', mimeType: 'application/pdf', bytes: pdfBytes(), pageCount: 4 });
-    const unused = await addAttachment({ kind: 'audio', name: 'Old memo', mimeType: 'audio/webm', bytes: new Uint8Array([1, 2]).buffer, durationMs: 61_000 });
-    const page = await createPage({ title: 'Week 1' });
-    await savePageDraft(page.id, { title: 'Week 1', content: doc(p('Read'), { type: 'pdf', attrs: { attachmentId: used.id } }) });
-    const user = userEvent.setup();
-    renderScreen();
-
-    const usedRow = (await screen.findByRole('link', { name: 'Syllabus' })).closest('li')!;
-    expect(within(usedRow).getByRole('link', { name: 'Week 1' })).toHaveAttribute('href', `/page/${page.id}`);
-    expect(within(usedRow).getByText(/PDF · 4 pages/)).toBeInTheDocument();
-    const unusedRow = screen.getByText('Old memo').closest('li')!;
-    expect(within(unusedRow).getByText(/Not in any page/)).toBeInTheDocument();
-    expect(within(unusedRow).getByText(/Recording · 1:01/)).toBeInTheDocument();
-    expect(screen.getByText(/2 files,/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('radio', { name: 'PDFs' }));
-    expect(screen.queryByText('Old memo')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: 'All' }));
-
-    // A file in a page cannot be deleted from here.
-    await user.click(within(usedRow).getByRole('button', { name: 'Actions for Syllabus' }));
-    expect(screen.getByRole('menuitem', { name: 'Delete permanently' })).toBeDisabled();
-    await user.keyboard('{Escape}');
-
-    await user.click(within(screen.getByText('Old memo').closest('li')!).getByRole('button', { name: 'Actions for Old memo' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Delete permanently' }));
-    const dialog = await screen.findByRole('dialog', { name: /Delete “Old memo” permanently/ });
-    expect(within(dialog).getByRole('button', { name: 'Keep file' })).toHaveFocus();
-    await user.click(within(dialog).getByRole('button', { name: 'Delete permanently' }));
-
-    await waitFor(async () => expect(await getAttachment(unused.id)).toBeUndefined());
-    expect(await getAttachment(used.id)).toBeDefined();
-    await act(async () => {});
-  });
-
-  it('renames a file', async () => {
-    const file = await addAttachment({ kind: 'audio', name: 'Memo', mimeType: 'audio/webm', bytes: new Uint8Array([1]).buffer });
-    const user = userEvent.setup();
-    renderScreen();
-    await user.click(await screen.findByRole('button', { name: 'Actions for Memo' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
-    const field = await screen.findByRole('textbox', { name: 'Name' });
-    await user.clear(field);
-    await user.type(field, 'Interview{Enter}');
-    await waitFor(async () => expect((await getAttachment(file.id))?.name).toBe('Interview'));
   });
 });

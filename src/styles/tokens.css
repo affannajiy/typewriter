@@ -153,6 +153,9 @@
   /* Paper ruling: faint, decoration only. Derived, so every theme and a custom accent get their own. */
   --tn-rule: color-mix(in srgb, var(--tn-accent) 32%, transparent);
   --tn-rule-dot: color-mix(in srgb, var(--tn-text-muted) 50%, transparent);
+  /* Search matches: the highlighter yellow, translucent so the text keeps its own contrast. */
+  --tn-match: color-mix(in srgb, var(--tn-ink-yellow) 45%, transparent);
+  --tn-match-current: color-mix(in srgb, var(--tn-ink-yellow) 90%, transparent);
   /* Patterns pressed into a notebook cover, over the cover's own colour. */
   --tn-cover-light: rgb(255 255 255 / 0.16);
   --tn-cover-shade: rgb(0 0 0 / 0.14);

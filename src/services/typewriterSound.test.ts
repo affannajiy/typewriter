@@ -211,10 +211,10 @@ describe('playTypewriterSound', () => {
 });
 
 describe('sound settings', () => {
-  it('are off by default and reject invalid stored values', () => {
-    expect(DEFAULT_SETTINGS.typingSound).toBe(false);
-    expect(resolveSettings({ typingSound: 'yes', soundVolume: 250 })).toMatchObject({ typingSound: false, soundVolume: 60 });
-    expect(resolveSettings({ typingSound: true, soundVolume: 0 })).toMatchObject({ typingSound: true, soundVolume: 0 });
+  it('are on by default and reject invalid stored values', () => {
+    expect(DEFAULT_SETTINGS.typingSound).toBe(true);
+    expect(resolveSettings({ typingSound: 'yes', soundVolume: 250 })).toMatchObject({ typingSound: true, soundVolume: 60 });
+    expect(resolveSettings({ typingSound: false, soundVolume: 0 })).toMatchObject({ typingSound: false, soundVolume: 0 });
   });
 
   it('model the desk machine unless another is chosen', () => {

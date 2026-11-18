@@ -1,53 +1,25 @@
+import Dexie from 'dexie';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { db } from '@/database/db';
-import { RepositoryError } from './common';
-import { createFolder, listFolders, moveFolder, renameFolder } from './folders';
-import { createNotebook, getNotebook, listNotebooks, moveNotebook, setNotebookTags, updateNotebookDetails } from './notebooks';
+import { TypeNoteDB, db } from '@/database/db';
+import { convertLegacyDoc } from '@/database/legacy';
+import { createNotebook, getNotebook, listNotebooks, updateNotebookDetails } from './notebooks';
 import { moveSibling } from './ordering';
-import { createPage, docToPlainText, getPage, listPages, markPageOpened, movePage, savePageDraft, setPageTags } from './pages';
-import { createTag, deleteTag, listTags } from './tags';
+import { createPage, docToPlainText, fillFileBlock, getPage, listPages, markPageOpened, movePage, savePageDraft } from './pages';
 import { emptyTrash, listTrash, purgeBatch, restoreBatch, trashItem } from './trash';
 
-const notebookInput = { name: 'Chemistry', description: '', coverColour: '#795b43', folderId: null };
+const notebookInput = { name: 'Chemistry', description: '', coverColour: '#795b43' };
 
 beforeEach(async () => {
   await db.delete();
   await db.open();
 });
 
-describe('folders', () => {
-  it('creates, renames and nests folders', async () => {
-    const parent = await createFolder({ name: '  School  ', parentId: null });
-    const child = await createFolder({ name: 'Year 1', parentId: parent.id });
-    await renameFolder(child.id, 'Year One');
-    const folders = await listFolders();
-    expect(folders.find((f) => f.id === parent.id)?.name).toBe('School');
-    expect(folders.find((f) => f.id === child.id)).toMatchObject({ name: 'Year One', parentId: parent.id, rev: 2 });
-  });
-
-  it('keeps the old name when the new one is blank', async () => {
-    const folder = await createFolder({ name: 'Keep', parentId: null });
-    await renameFolder(folder.id, '   ');
-    expect((await listFolders())[0]?.name).toBe('Keep');
-  });
-
-  it('refuses to move a folder into itself or its own subfolder', async () => {
-    const a = await createFolder({ name: 'A', parentId: null });
-    const b = await createFolder({ name: 'B', parentId: a.id });
-    await expect(moveFolder(a.id, a.id)).rejects.toBeInstanceOf(RepositoryError);
-    await expect(moveFolder(a.id, b.id)).rejects.toMatchObject({ code: 'invalid-move' });
-    expect((await listFolders()).find((f) => f.id === a.id)?.parentId).toBeNull();
-  });
-});
-
 describe('notebooks', () => {
-  it('creates, edits and moves a notebook without touching its pages', async () => {
-    const folder = await createFolder({ name: 'Science', parentId: null });
+  it('creates and edits a notebook without touching its pages', async () => {
     const notebook = await createNotebook(notebookInput);
     const page = await createPage({ notebookId: notebook.id, title: 'Atoms' });
     await updateNotebookDetails(notebook.id, { name: 'Chem', description: 'Term 1', coverColour: '#263B32' });
-    await moveNotebook(notebook.id, folder.id);
-    expect(await getNotebook(notebook.id)).toMatchObject({ name: 'Chem', description: 'Term 1', folderId: folder.id, cover: { kind: 'solid', colour: '#263b32' } });
+    expect(await getNotebook(notebook.id)).toMatchObject({ name: 'Chem', description: 'Term 1', cover: { kind: 'solid', colour: '#263b32' } });
     expect(await getPage(page.id)).toMatchObject({ title: 'Atoms', notebookId: notebook.id, rev: 1 });
   });
 
@@ -72,13 +44,27 @@ describe('pages', () => {
     await expect(savePageDraft('missing', { title: 'x', content: { type: 'doc' } })).rejects.toMatchObject({ code: 'not-found' });
   });
 
-  it('moves a page and keeps its ID', async () => {
+  it('moves a page out of a notebook and into another, keeping its ID', async () => {
     const notebook = await createNotebook(notebookInput);
-    const folder = await createFolder({ name: 'Loose', parentId: null });
+    const other = await createNotebook({ ...notebookInput, name: 'Physics' });
     const page = await createPage({ notebookId: notebook.id });
-    await movePage(page.id, { notebookId: null, folderId: folder.id });
-    expect(await getPage(page.id)).toMatchObject({ id: page.id, notebookId: null, folderId: folder.id });
-    await expect(movePage(page.id, { notebookId: notebook.id, folderId: folder.id })).rejects.toMatchObject({ code: 'invalid-move' });
+    await movePage(page.id, { notebookId: null });
+    expect(await getPage(page.id)).toMatchObject({ id: page.id, notebookId: null });
+    await movePage(page.id, { notebookId: other.id });
+    expect(await getPage(page.id)).toMatchObject({ id: page.id, notebookId: other.id });
+    await expect(movePage(page.id, { notebookId: 'missing' })).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it('puts a recording that ended after its page closed into its block, or at the end when the block is gone', async () => {
+    const page = await createPage();
+    const content = { type: 'doc', content: [{ type: 'paragraph', attrs: { id: 'b1' } }, { type: 'audio', attrs: { id: 'b2', attachmentId: null } }] };
+    await savePageDraft(page.id, { title: 'Lecture', content });
+    await fillFileBlock(page.id, 'b2', 'audio', 'rec-1');
+    expect((await getPage(page.id))?.content.content?.[1]).toEqual({ type: 'audio', attrs: { id: 'b2', attachmentId: 'rec-1' } });
+    await fillFileBlock(page.id, 'gone', 'audio', 'rec-2');
+    const blocks = (await getPage(page.id))?.content.content ?? [];
+    expect(blocks).toHaveLength(3);
+    expect(blocks[2]).toEqual({ type: 'audio', attrs: { attachmentId: 'rec-2' } });
   });
 
   it('does not count opening a page as an edit', async () => {
@@ -100,80 +86,144 @@ describe('pages', () => {
   });
 });
 
-describe('tags', () => {
-  it('reuses a tag with the same name, ignoring case', async () => {
-    const a = await createTag('Exam');
-    const b = await createTag('  exam ');
-    expect(b.id).toBe(a.id);
-    expect(await listTags()).toHaveLength(1);
-  });
-
-  it('removes a deleted tag from notebooks and pages, and keeps the items', async () => {
-    const tag = await createTag('Exam');
-    const other = await createTag('Draft');
-    const notebook = await createNotebook(notebookInput);
-    const page = await createPage();
-    await setNotebookTags(notebook.id, [tag.id]);
-    await setPageTags(page.id, [tag.id, other.id]);
-    await deleteTag(tag.id);
-    expect((await getNotebook(notebook.id))?.tagIds).toEqual([]);
-    expect((await getPage(page.id))?.tagIds).toEqual([other.id]);
-  });
-});
-
 describe('trash', () => {
-  async function seedTree() {
-    const folder = await createFolder({ name: 'School', parentId: null });
-    const sub = await createFolder({ name: 'Year 1', parentId: folder.id });
-    const notebook = await createNotebook({ ...notebookInput, folderId: sub.id });
+  async function seed() {
+    const notebook = await createNotebook(notebookInput);
     const inNotebook = await createPage({ notebookId: notebook.id, title: 'Atoms' });
-    const inFolder = await createPage({ folderId: folder.id, title: 'Timetable' });
-    const outside = await createPage({ title: 'Outside' });
-    return { folder, sub, notebook, inNotebook, inFolder, outside };
+    const second = await createPage({ notebookId: notebook.id, title: 'Bonds' });
+    const loose = await createPage({ title: 'Loose' });
+    return { notebook, inNotebook, second, loose };
   }
 
-  it('moves a folder and everything inside it to the Trash as one batch', async () => {
-    const tree = await seedTree();
-    const { count } = await trashItem({ kind: 'folder', id: tree.folder.id });
-    expect(count).toBe(5);
-    expect(await listFolders()).toHaveLength(0);
+  it('moves a notebook and its pages to the Trash as one batch', async () => {
+    const tree = await seed();
+    const { count } = await trashItem({ kind: 'notebook', id: tree.notebook.id });
+    expect(count).toBe(3);
     expect(await listNotebooks()).toHaveLength(0);
-    expect((await listPages()).map((p) => p.title)).toEqual(['Outside']);
+    expect((await listPages()).map((p) => p.title)).toEqual(['Loose']);
     const trash = await listTrash();
     expect(trash).toHaveLength(1);
-    expect(trash[0]).toMatchObject({ name: 'School', count: 5, root: { kind: 'folder', id: tree.folder.id } });
+    expect(trash[0]).toMatchObject({ name: 'Chemistry', count: 3, root: { kind: 'notebook', id: tree.notebook.id } });
     // Nothing was removed from the database.
     expect(await db.pages.count()).toBe(3);
   });
 
   it('restores a batch to exactly where it was', async () => {
-    const tree = await seedTree();
-    const { batchId } = await trashItem({ kind: 'folder', id: tree.folder.id });
-    const result = await restoreBatch(batchId);
-    expect(result).toEqual({ restored: 5, relocated: false });
+    const tree = await seed();
+    const { batchId } = await trashItem({ kind: 'notebook', id: tree.notebook.id });
+    expect(await restoreBatch(batchId)).toEqual({ restored: 3, relocated: false });
     expect(await getPage(tree.inNotebook.id)).toMatchObject({ notebookId: tree.notebook.id, deletedAt: null, trashBatchId: null });
-    expect(await getNotebook(tree.notebook.id)).toMatchObject({ folderId: tree.sub.id, deletedAt: null });
+    expect(await getNotebook(tree.notebook.id)).toMatchObject({ deletedAt: null });
     expect(await listTrash()).toHaveLength(0);
   });
 
-  it('restores an item to the top level when its old location is gone', async () => {
-    const tree = await seedTree();
+  it('restores a page as a loose page when its notebook is gone', async () => {
+    const tree = await seed();
     const pageBatch = await trashItem({ kind: 'page', id: tree.inNotebook.id });
-    const folderBatch = await trashItem({ kind: 'folder', id: tree.folder.id });
-    expect(folderBatch.count).toBe(4); // The page already in the Trash keeps its own batch.
-    await purgeBatch(folderBatch.batchId);
-    const result = await restoreBatch(pageBatch.batchId);
-    expect(result).toEqual({ restored: 1, relocated: true });
-    expect(await getPage(tree.inNotebook.id)).toMatchObject({ notebookId: null, folderId: null, deletedAt: null });
+    const notebookBatch = await trashItem({ kind: 'notebook', id: tree.notebook.id });
+    expect(notebookBatch.count).toBe(2); // The page already in the Trash keeps its own batch.
+    await purgeBatch(notebookBatch.batchId);
+    expect(await restoreBatch(pageBatch.batchId)).toEqual({ restored: 1, relocated: true });
+    expect(await getPage(tree.inNotebook.id)).toMatchObject({ notebookId: null, deletedAt: null });
   });
 
   it('deletes permanently only what is in the Trash', async () => {
-    const tree = await seedTree();
+    const tree = await seed();
     await trashItem({ kind: 'notebook', id: tree.notebook.id });
-    expect(await emptyTrash()).toBe(2);
+    expect(await emptyTrash()).toBe(3);
     expect(await getNotebook(tree.notebook.id)).toBeUndefined();
     expect(await getPage(tree.inNotebook.id)).toBeUndefined();
-    expect((await listPages()).map((p) => p.title).sort()).toEqual(['Outside', 'Timetable']);
-    expect(await listFolders()).toHaveLength(2);
+    expect((await listPages()).map((p) => p.title)).toEqual(['Loose']);
+  });
+});
+
+describe('legacy documents', () => {
+  it('turns a page link into the text of its title and joins the text around it', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'See ' }, { type: 'pageLink', attrs: { pageId: 'p2', title: 'Atoms' } }, { type: 'text', text: ' first.' }] },
+        { type: 'paragraph', content: [{ type: 'pageLink', attrs: { pageId: 'p3', title: '' } }] },
+      ],
+    };
+    expect(convertLegacyDoc(doc)).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'See Atoms first.' }] },
+        { type: 'paragraph', content: [] },
+      ],
+    });
+  });
+
+  it('returns the same document when there is nothing to convert', () => {
+    const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Plain' }] }] };
+    expect(convertLegacyDoc(doc)).toBe(doc);
+  });
+});
+
+describe('schema version 6', () => {
+  it('opens a version 5 database: folders, tags and study data go, notebooks and pages stay', async () => {
+    const name = 'typenote-v5-upgrade';
+    await Dexie.delete(name);
+    const old = new Dexie(name);
+    old.version(1).stores({
+      folders: 'id, parentId, trashBatchId',
+      notebooks: 'id, folderId, *tagIds, trashBatchId',
+      pages: 'id, notebookId, folderId, *tagIds, updatedAt, trashBatchId',
+      tags: 'id',
+      settings: 'key',
+      snapshots: 'id, createdAt',
+    });
+    old.version(2).stores({ drawings: 'id, pageId' });
+    old.version(3).stores({ writingDays: 'date' });
+    old.version(4).stores({ attachments: 'id, kind', attachmentData: 'id', annotations: 'id, attachmentId' });
+    old.version(5).stores({ decks: 'id', flashcards: 'id, deckId, due, sourcePageId', reviewLogs: 'id, cardId, deckId, reviewedAt' });
+    await old.open();
+    const base = { createdAt: 1, updatedAt: 1, rev: 1, deletedAt: null, trashBatchId: null, order: 1 };
+    await old.table('folders').add({ ...base, id: 'f1', name: 'School', parentId: null });
+    await old.table('tags').add({ id: 't1', createdAt: 1, updatedAt: 1, rev: 1, name: 'Exam', colour: '#123456' });
+    await old.table('notebooks').add({ ...base, id: 'n1', name: 'Chemistry', description: '', folderId: 'f1', cover: { kind: 'solid', colour: '#795b43' }, icon: null, tagIds: ['t1'], favourite: false });
+    const page = { ...base, layout: 'continuous', favourite: false, pinned: false, lastOpenedAt: null, plainText: '' };
+    await old.table('pages').add({
+      ...page,
+      id: 'p1',
+      title: 'Atoms',
+      notebookId: 'n1',
+      folderId: null,
+      tagIds: ['t1'],
+      content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Read ' }, { type: 'pageLink', attrs: { pageId: 'p2', title: 'Timetable' } }] }] },
+    });
+    await old.table('pages').add({ ...page, id: 'p2', title: 'Timetable', notebookId: null, folderId: 'f1', tagIds: [], content: { type: 'doc', content: [{ type: 'paragraph' }] } });
+    await old.table('writingDays').add({ date: '2026-11-01', words: 300, updatedAt: 1 });
+    await old.table('decks').add({ id: 'd1', createdAt: 1, updatedAt: 1, rev: 1, name: 'Deck', description: '', order: 1 });
+    await old.table('settings').bulkAdd([
+      { key: 'dailyGoal', value: 500, updatedAt: 1 },
+      { key: 'studyRetention', value: 90, updatedAt: 1 },
+      { key: 'theme', value: 'forest', updatedAt: 1 },
+    ]);
+    old.close();
+
+    const upgraded = new TypeNoteDB(name);
+    await upgraded.open();
+    expect(upgraded.verno).toBe(6);
+    const tableNames = upgraded.tables.map((table) => table.name);
+    for (const gone of ['folders', 'tags', 'writingDays', 'decks', 'flashcards', 'reviewLogs']) expect(tableNames).not.toContain(gone);
+
+    const notebook = (await upgraded.notebooks.get('n1')) as unknown as Record<string, unknown>;
+    expect(notebook).toMatchObject({ name: 'Chemistry' });
+    expect(notebook).not.toHaveProperty('folderId');
+    expect(notebook).not.toHaveProperty('tagIds');
+
+    const atoms = (await upgraded.pages.get('p1')) as unknown as Record<string, unknown>;
+    expect(atoms).toMatchObject({ notebookId: 'n1', content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Read Timetable' }] }] } });
+    expect(atoms).not.toHaveProperty('tagIds');
+    // A page that was in a folder is now a loose page.
+    const timetable = (await upgraded.pages.get('p2')) as unknown as Record<string, unknown>;
+    expect(timetable).toMatchObject({ notebookId: null });
+    expect(timetable).not.toHaveProperty('folderId');
+
+    expect((await upgraded.settings.toArray()).map((row) => row.key)).toEqual(['theme']);
+    upgraded.close();
+    await Dexie.delete(name);
   });
 });

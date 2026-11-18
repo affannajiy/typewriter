@@ -1,9 +1,8 @@
 import { db } from '@/database/db';
-import type { Folder, Id, ItemKind, ItemRef, Notebook, Page } from '@/types/models';
-import { found, isLive, newId, now } from './common';
+import type { Id, ItemKind, ItemRef, Notebook, Page } from '@/types/models';
+import { RepositoryError, found, isLive, newId, now } from './common';
 import { deleteAttachmentsOnlyIn } from './attachments';
 import { deleteDrawingsOfPages } from './drawings';
-import { folderSubtreeIds } from './folders';
 import { patchPages } from './pages';
 
 /**
@@ -25,94 +24,74 @@ export interface TrashEntry {
 
 export interface RestoreResult {
   restored: number;
-  /** True when the original location no longer exists and the item went to the top level. */
+  /** True when a page's notebook no longer exists and the page came back as a loose page. */
   relocated: boolean;
 }
 
-const tables = () => [db.folders, db.notebooks, db.pages] as const;
+const tables = () => [db.notebooks, db.pages] as const;
 /** What a permanent deletion also touches: drawings and files belong to pages. */
-const fileTables = () => [db.drawings, db.attachments, db.attachmentData, db.annotations] as const;
+const fileTables = () => [db.drawings, db.attachments, db.attachmentData, db.annotations, db.pdfTexts] as const;
 
 /** Move an item and its contents to the Trash. */
 export async function trashItem(ref: ItemRef): Promise<{ batchId: Id; count: number }> {
   return db.transaction('rw', tables(), async () => {
     const batchId = newId();
     const mark: Partial<Page> = { deletedAt: now(), trashBatchId: batchId };
-    const folders = (await db.folders.toArray()).filter(isLive);
-    const notebooks = (await db.notebooks.toArray()).filter(isLive);
     const pages = (await db.pages.toArray()).filter(isLive);
-
-    let folderIds = new Set<Id>();
-    let notebookIds = new Set<Id>();
+    let notebookIds: Id[] = [];
     let pageIds: Id[];
 
     if (ref.kind === 'page') {
       found(pages.find((p) => p.id === ref.id), 'Page');
       pageIds = [ref.id];
     } else {
-      if (ref.kind === 'folder') {
-        found(folders.find((f) => f.id === ref.id), 'Folder');
-        folderIds = folderSubtreeIds(ref.id, folders);
-        notebookIds = new Set(notebooks.filter((n) => n.folderId !== null && folderIds.has(n.folderId)).map((n) => n.id));
-      } else {
-        found(notebooks.find((n) => n.id === ref.id), 'Notebook');
-        notebookIds = new Set([ref.id]);
-      }
-      pageIds = pages
-        .filter(
-          (p) => (p.folderId !== null && folderIds.has(p.folderId)) || (p.notebookId !== null && notebookIds.has(p.notebookId)),
-        )
-        .map((p) => p.id);
+      const notebook = found(await db.notebooks.get(ref.id), 'Notebook');
+      if (!isLive(notebook)) throw new RepositoryError('not-found', 'Notebook not found');
+      notebookIds = [ref.id];
+      pageIds = pages.filter((p) => p.notebookId === ref.id).map((p) => p.id);
     }
 
-    await db.folders.where('id').anyOf([...folderIds]).modify(mark);
-    await db.notebooks.where('id').anyOf([...notebookIds]).modify(mark);
+    await db.notebooks.where('id').anyOf(notebookIds).modify(mark);
     await patchPages(pageIds, mark);
-    return { batchId, count: folderIds.size + notebookIds.size + pageIds.length };
+    return { batchId, count: notebookIds.length + pageIds.length };
   });
 }
 
 interface Batch {
-  folders: Folder[];
   notebooks: Notebook[];
   pages: Page[];
 }
 
 async function loadBatch(batchId: Id): Promise<Batch> {
-  const [folders, notebooks, pages] = await Promise.all([
-    db.folders.where('trashBatchId').equals(batchId).toArray(),
+  const [notebooks, pages] = await Promise.all([
     db.notebooks.where('trashBatchId').equals(batchId).toArray(),
     db.pages.where('trashBatchId').equals(batchId).toArray(),
   ]);
-  return { folders, notebooks, pages };
+  return { notebooks, pages };
 }
 
-/** The root of a batch is the one item whose parent is not part of the batch. */
-function findRoot(batch: Batch): { kind: ItemKind; item: Folder | Notebook | Page } | null {
-  const folderIds = new Set(batch.folders.map((f) => f.id));
-  const notebookIds = new Set(batch.notebooks.map((n) => n.id));
-  const folder = batch.folders.find((f) => f.parentId === null || !folderIds.has(f.parentId));
-  if (folder) return { kind: 'folder', item: folder };
-  const notebook = batch.notebooks.find((n) => n.folderId === null || !folderIds.has(n.folderId));
+/**
+ * The root of a batch: its notebook, or else the one page whose notebook is
+ * not part of the batch. A batch made before 0.8.0 from a folder can hold
+ * several notebooks: the first one names it.
+ */
+function findRoot(batch: Batch): { kind: ItemKind; item: Notebook | Page } | null {
+  const notebook = batch.notebooks[0];
   if (notebook) return { kind: 'notebook', item: notebook };
-  const page = batch.pages.find(
-    (p) => !(p.folderId !== null && folderIds.has(p.folderId)) && !(p.notebookId !== null && notebookIds.has(p.notebookId)),
-  );
+  const page = batch.pages[0];
   return page ? { kind: 'page', item: page } : null;
 }
 
-const displayName = (kind: ItemKind, item: Folder | Notebook | Page) =>
-  kind === 'page' ? (item as Page).title : (item as Folder | Notebook).name;
+const displayName = (kind: ItemKind, item: Notebook | Page) => (kind === 'page' ? (item as Page).title : (item as Notebook).name);
 
 export async function listTrash(): Promise<TrashEntry[]> {
-  const [folders, notebooks, pages] = await Promise.all([db.folders.toArray(), db.notebooks.toArray(), db.pages.toArray()]);
+  const [notebooks, pages] = await Promise.all([db.notebooks.toArray(), db.pages.toArray()]);
   const batches = new Map<Id, Batch>();
   const slot = (id: Id) => {
     let batch = batches.get(id);
-    if (!batch) batches.set(id, (batch = { folders: [], notebooks: [], pages: [] }));
+    if (!batch) batches.set(id, (batch = { notebooks: [], pages: [] }));
     return batch;
   };
-  for (const f of folders) if (f.trashBatchId) slot(f.trashBatchId).folders.push(f);
   for (const n of notebooks) if (n.trashBatchId) slot(n.trashBatchId).notebooks.push(n);
   for (const p of pages) if (p.trashBatchId) slot(p.trashBatchId).pages.push(p);
 
@@ -124,7 +103,7 @@ export async function listTrash(): Promise<TrashEntry[]> {
       batchId,
       root: { kind: root.kind, id: root.item.id },
       name: displayName(root.kind, root.item),
-      count: batch.folders.length + batch.notebooks.length + batch.pages.length,
+      count: batch.notebooks.length + batch.pages.length,
       deletedAt: root.item.deletedAt ?? 0,
     });
   }
@@ -132,44 +111,26 @@ export async function listTrash(): Promise<TrashEntry[]> {
 }
 
 /**
- * Restore a batch to where it was. If the original parent is gone or is
- * itself in the Trash, the root item returns to the top level instead.
+ * Restore a batch to where it was. A page whose notebook is gone, or is
+ * itself in the Trash, comes back as a loose page instead.
  */
 export async function restoreBatch(batchId: Id): Promise<RestoreResult> {
   return db.transaction('rw', tables(), async () => {
     const batch = await loadBatch(batchId);
-    const root = findRoot(batch);
     const unmark: Partial<Page> = { deletedAt: null, trashBatchId: null };
-    await db.folders.where('trashBatchId').equals(batchId).modify(unmark);
     await db.notebooks.where('trashBatchId').equals(batchId).modify(unmark);
     await patchPages(batch.pages.map((p) => p.id), unmark);
 
     let relocated = false;
-    const usable = async (table: typeof db.folders | typeof db.notebooks, id: Id | null) => {
-      if (id === null) return true;
-      const parent = await table.get(id);
-      return parent !== undefined && isLive(parent);
-    };
-    if (root?.kind === 'folder') {
-      const folder = root.item as Folder;
-      if (!(await usable(db.folders, folder.parentId))) {
-        await db.folders.update(folder.id, { parentId: null });
-        relocated = true;
-      }
-    } else if (root?.kind === 'notebook') {
-      const notebook = root.item as Notebook;
-      if (!(await usable(db.folders, notebook.folderId))) {
-        await db.notebooks.update(notebook.id, { folderId: null });
-        relocated = true;
-      }
-    } else if (root?.kind === 'page') {
-      const page = root.item as Page;
-      if (!(await usable(db.folders, page.folderId)) || !(await usable(db.notebooks, page.notebookId))) {
-        await patchPages([page.id], { folderId: null, notebookId: null });
+    for (const page of batch.pages) {
+      if (page.notebookId === null) continue;
+      const notebook = await db.notebooks.get(page.notebookId);
+      if (notebook === undefined || !isLive(notebook)) {
+        await patchPages([page.id], { notebookId: null });
         relocated = true;
       }
     }
-    return { restored: batch.folders.length + batch.notebooks.length + batch.pages.length, relocated };
+    return { restored: batch.notebooks.length + batch.pages.length, relocated };
   });
 }
 
@@ -181,7 +142,6 @@ export async function purgeBatch(batchId: Id): Promise<number> {
     await deleteDrawingsOfPages(pageIds);
     await deleteAttachmentsOnlyIn(pageIds);
     const counts = await Promise.all([
-      db.folders.where('trashBatchId').equals(batchId).delete(),
       db.notebooks.where('trashBatchId').equals(batchId).delete(),
       db.pages.where('trashBatchId').equals(batchId).delete(),
     ]);
@@ -197,7 +157,6 @@ export async function emptyTrash(): Promise<number> {
     await deleteDrawingsOfPages(pageIds);
     await deleteAttachmentsOnlyIn(pageIds);
     const counts = await Promise.all([
-      db.folders.filter(trashed).delete(),
       db.notebooks.filter(trashed).delete(),
       db.pages.filter(trashed).delete(),
     ]);

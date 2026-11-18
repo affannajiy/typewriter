@@ -33,7 +33,7 @@ export function cleanName(raw: string, fallback: string): string {
   return name === '' ? fallback : name;
 }
 
-export type RepositoryErrorCode = 'not-found' | 'invalid-move' | 'invalid-colour' | 'invalid-file' | 'file-too-large' | 'file-in-use' | 'invalid-card';
+export type RepositoryErrorCode = 'not-found' | 'invalid-move' | 'invalid-colour' | 'invalid-file' | 'file-too-large' | 'file-in-use';
 
 /** An expected failure the interface can explain to the user. */
 export class RepositoryError extends Error {

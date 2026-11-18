@@ -341,6 +341,18 @@
 :root[data-focus] .tn-page-footer {
   bottom: 0;
 }
+
+/*
+ * While the writer types, the side rail fades out, so only the page is left.
+ * Moving the pointer brings it back (AppShell). It stays in place and
+ * reachable by keyboard: focus inside it shows it again.
+ */
+.tn-rail {
+  transition: opacity calc(var(--tn-motion) * 2);
+}
+:root[data-typing] .tn-rail:not(:focus-within) {
+  opacity: 0;
+}
 .tn-prose > *,
 .tn-drawing > *,
 .tn-file > * {

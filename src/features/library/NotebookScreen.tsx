@@ -3,10 +3,9 @@ import { useNavigate, useParams } from 'react-router';
 import { Button, IconButton } from '@/components/ui/Button';
 import { Breadcrumbs, EmptyState, LoadingBlock, Section } from '@/components/ui/Layout';
 import { byOrder } from '@/database/repositories/common';
-import { setNotebookFavourite, setNotebookTags } from '@/database/repositories/notebooks';
+import { setNotebookFavourite } from '@/database/repositories/notebooks';
 import { ItemMenu } from '@/features/organisation/ItemMenu';
-import { TagPicker } from '@/features/organisation/TagPicker';
-import { NotebookCover, PageRow, folderPath, folderTrail } from '@/features/organisation/items';
+import { NotebookCover, PageRow } from '@/features/organisation/items';
 import { useItemActions } from '@/features/organisation/useItemActions';
 import { NotFound } from '@/features/pages/NotFound';
 import { useWorkspace } from '@/hooks/useData';
@@ -24,7 +23,6 @@ export function NotebookScreen() {
   if (!notebook) return <NotFound />;
 
   const pages = workspace.pages.filter((p) => p.notebookId === notebook.id).sort(byOrder);
-  const trail = folderTrail(notebook.folderId, workspace.folders);
   const newPageButton = (
     <Button variant="primary" icon={FilePlus} onClick={() => void newPage({ notebookId: notebook.id })}>
       {t.actions.newPage}
@@ -34,7 +32,7 @@ export function NotebookScreen() {
   return (
     <>
       <div className="mb-4">
-        <Breadcrumbs items={[{ label: t.library.title, to: '/library' }, ...trail.map((f) => ({ label: f.name, to: folderPath(f.id) })), { label: notebook.name }]} />
+        <Breadcrumbs items={[{ label: t.library.title, to: '/' }, { label: notebook.name }]} />
       </div>
       <header className="mb-8 flex flex-col gap-5 sm:flex-row">
         <div className="w-32 shrink-0">
@@ -50,10 +48,9 @@ export function NotebookScreen() {
               label={t.organise.favourite}
               onClick={() => void guarded(() => setNotebookFavourite(notebook.id, !notebook.favourite))}
             />
-            <ItemMenu entry={{ kind: 'notebook', item: notebook }} workspace={workspace} onTrashed={() => navigate(folderPath(notebook.folderId))} />
+            <ItemMenu entry={{ kind: 'notebook', item: notebook }} workspace={workspace} onTrashed={() => navigate('/')} />
           </div>
           {notebook.description && <p className="max-w-prose text-sm whitespace-pre-line text-muted">{notebook.description}</p>}
-          <TagPicker tags={workspace.tags} selected={notebook.tagIds} onChange={(tagIds) => void guarded(() => setNotebookTags(notebook.id, tagIds))} />
         </div>
       </header>
 

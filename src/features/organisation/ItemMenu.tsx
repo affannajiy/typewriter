@@ -1,25 +1,18 @@
 import { ArrowDown, ArrowUp, FolderInput, Pencil, Pin, PinOff, Star, StarOff, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Menu, type MenuItem } from '@/components/ui/Menu';
-import { moveFolder, renameFolder } from '@/database/repositories/folders';
-import { moveNotebook, setNotebookFavourite, updateNotebookDetails } from '@/database/repositories/notebooks';
+import { setNotebookFavourite, updateNotebookDetails } from '@/database/repositories/notebooks';
 import { moveSibling } from '@/database/repositories/ordering';
 import { movePage, renamePage, setPageFlags } from '@/database/repositories/pages';
 import type { Workspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
-import type { Folder, Notebook, Page, PageLocation } from '@/types/models';
+import type { Notebook, Page, PageLocation } from '@/types/models';
 import { MoveDialog, NameDialog, NotebookDialog } from './dialogs';
 import { useItemActions } from './useItemActions';
 
-export type Item = { kind: 'folder'; item: Folder } | { kind: 'notebook'; item: Notebook } | { kind: 'page'; item: Page };
+export type Item = { kind: 'notebook'; item: Notebook } | { kind: 'page'; item: Page };
 
 export const itemName = (entry: Item): string => (entry.kind === 'page' ? entry.item.title : entry.item.name);
-
-function locationOf(entry: Item): PageLocation {
-  if (entry.kind === 'folder') return { folderId: entry.item.parentId, notebookId: null };
-  if (entry.kind === 'notebook') return { folderId: entry.item.folderId, notebookId: null };
-  return { folderId: entry.item.folderId, notebookId: entry.item.notebookId };
-}
 
 interface ItemMenuProps {
   entry: Item;
@@ -32,7 +25,7 @@ interface ItemMenuProps {
   noRename?: boolean;
 }
 
-/** The actions menu shared by every folder, notebook and page. */
+/** The actions menu shared by every notebook and page. */
 export function ItemMenu({ entry, workspace, position, onTrashed, noRename }: ItemMenuProps) {
   const { trash, guarded } = useItemActions();
   const [dialog, setDialog] = useState<'rename' | 'move' | null>(null);
@@ -42,7 +35,8 @@ export function ItemMenu({ entry, workspace, position, onTrashed, noRename }: It
 
   const items: MenuItem[] = [
     ...(noRename ? [] : [{ id: 'rename', label: kind === 'notebook' ? t.notebook.editDetails : t.organise.rename, icon: Pencil, onSelect: () => setDialog('rename') }]),
-    { id: 'move', label: t.organise.moveTo, icon: FolderInput, onSelect: () => setDialog('move') },
+    // Notebooks all sit on the shelf; only a page has somewhere to move to.
+    ...(kind === 'page' ? [{ id: 'move', label: t.organise.moveTo, icon: FolderInput, onSelect: () => setDialog('move') }] : []),
   ];
   if (position) {
     items.push(
@@ -69,12 +63,7 @@ export function ItemMenu({ entry, workspace, position, onTrashed, noRename }: It
     onSelect: () => void trash(ref, name).then(onTrashed),
   });
 
-  const move = (location: PageLocation) =>
-    void guarded(() => {
-      if (kind === 'folder') return moveFolder(item.id, location.folderId);
-      if (kind === 'notebook') return moveNotebook(item.id, location.folderId);
-      return movePage(item.id, location);
-    });
+  const move = (location: PageLocation) => void guarded(() => movePage(item.id, location));
 
   return (
     <>
@@ -89,10 +78,10 @@ export function ItemMenu({ entry, workspace, position, onTrashed, noRename }: It
           label={t.organise.name}
           initial={name}
           submitLabel={t.organise.rename}
-          onSubmit={(next) => void guarded(() => (kind === 'folder' ? renameFolder(item.id, next) : renamePage(item.id, next)))}
+          onSubmit={(next) => void guarded(() => renamePage(item.id, next))}
         />
       )}
-      <MoveDialog open={dialog === 'move'} onClose={() => setDialog(null)} workspace={workspace} kind={kind} itemId={item.id} itemName={name} current={locationOf(entry)} onMove={move} />
+      {entry.kind === 'page' && <MoveDialog open={dialog === 'move'} onClose={() => setDialog(null)} workspace={workspace} itemName={name} current={{ notebookId: entry.item.notebookId }} onMove={move} />}
     </>
   );
 }

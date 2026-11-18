@@ -1,89 +1,78 @@
-import { BookPlus, FilePlus, FolderPlus, LayoutGrid, Library, List } from 'lucide-react';
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { BookPlus, FilePlus, LayoutGrid, List, NotebookPen } from 'lucide-react';
+import { useDeferredValue, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/Button';
-import { Breadcrumbs, EmptyState, LoadingBlock, PageHeader, Section, Segmented } from '@/components/ui/Layout';
+import { EmptyState, LoadingBlock, PageHeader, Section, Segmented } from '@/components/ui/Layout';
 import { byOrder } from '@/database/repositories/common';
-import { createFolder } from '@/database/repositories/folders';
 import { createNotebook } from '@/database/repositories/notebooks';
 import { writeSetting } from '@/database/repositories/settings';
-import { ItemMenu } from '@/features/organisation/ItemMenu';
-import { NameDialog, NotebookDialog } from '@/features/organisation/dialogs';
-import { FolderRow, NotebookCard, NotebookRow, PageRow, folderPath, folderTrail } from '@/features/organisation/items';
+import { NotebookDialog } from '@/features/organisation/dialogs';
+import { NotebookCard, NotebookRow, PageRow, notebookPath } from '@/features/organisation/items';
 import { useItemActions } from '@/features/organisation/useItemActions';
-import { NotFound } from '@/features/pages/NotFound';
-import { useSettings, useWorkspace } from '@/hooks/useData';
+import { SearchField, SearchResultsList } from '@/features/search/SearchResults';
+import { queryWords, searchEverything } from '@/features/search/search';
+import { useSearchSource, useSettings, useWorkspace } from '@/hooks/useData';
 import { t } from '@/i18n/en';
 
-/** Folders, notebooks and loose pages at one level of the workspace. */
+/**
+ * Home: a search field over everything written, the notebooks on their
+ * shelf, and loose pages under it. While there is a query, its results take
+ * the shelf's place. With nothing written yet, one button makes the first notebook.
+ */
 export function LibraryScreen() {
-  const { folderId = null } = useParams();
   const workspace = useWorkspace();
   const settings = useSettings();
-  const navigate = useNavigate();
   const { newPage, guarded } = useItemActions();
-  const [dialog, setDialog] = useState<'folder' | 'notebook' | null>(null);
+  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
+  // The query lives in the address, so Back returns to the results and a search can be bookmarked.
+  const [params, setParams] = useSearchParams();
+  const query = params.get('q') ?? '';
+  const setQuery = (next: string) => setParams(next ? { q: next } : {}, { replace: true });
+  const source = useSearchSource();
+  const deferred = useDeferredValue(query);
+  const results = useMemo(() => (source && queryWords(deferred).length > 0 ? searchEverything(source, deferred) : null), [source, deferred]);
 
   if (!workspace) return <LoadingBlock />;
-  const folder = folderId ? workspace.folders.find((f) => f.id === folderId) : null;
-  if (folderId && !folder) return <NotFound />;
 
-  const folders = workspace.folders.filter((f) => f.parentId === folderId).sort(byOrder);
-  const notebooks = workspace.notebooks.filter((n) => n.folderId === folderId).sort(byOrder);
-  const pages = workspace.pages.filter((p) => p.folderId === folderId && p.notebookId === null).sort(byOrder);
-  const isEmpty = folders.length + notebooks.length + pages.length === 0;
-  const trail = folderTrail(folderId, workspace.folders);
+  const notebooks = [...workspace.notebooks].sort(byOrder);
+  const pages = workspace.pages.filter((p) => p.notebookId === null).sort(byOrder);
+  const isEmpty = notebooks.length + pages.length === 0;
 
-  const actions = (
-    <>
-      <Button icon={FolderPlus} onClick={() => setDialog('folder')}>
-        {t.actions.newFolder}
-      </Button>
-      <Button icon={BookPlus} onClick={() => setDialog('notebook')}>
-        {t.actions.newNotebook}
-      </Button>
-      <Button variant="primary" icon={FilePlus} onClick={() => void newPage({ folderId })}>
-        {t.actions.newPage}
-      </Button>
-    </>
+  const newNotebookButton = (primary: boolean) => (
+    <Button variant={primary ? 'primary' : 'secondary'} icon={BookPlus} onClick={() => setCreating(true)}>
+      {isEmpty ? t.library.createFirst : t.actions.newNotebook}
+    </Button>
   );
 
   return (
     <>
-      <PageHeader
-        title={folder ? folder.name : t.library.title}
-        description={folder ? undefined : t.library.description}
-        actions={
-          <>
-            {folder && <ItemMenu entry={{ kind: 'folder', item: folder }} workspace={workspace} onTrashed={() => navigate(folderPath(folder.parentId))} />}
-            {!isEmpty && actions}
-          </>
-        }
-      >
-        {folder && (
-          <Breadcrumbs
-            items={[{ label: t.library.title, to: '/library' }, ...trail.map((f, i) => ({ label: f.name, to: i === trail.length - 1 ? undefined : folderPath(f.id) }))]}
-          />
-        )}
-      </PageHeader>
+      <PageHeader title={t.library.title} description={isEmpty ? undefined : t.library.description} actions={isEmpty ? undefined : newNotebookButton(true)} />
 
-      {isEmpty ? (
-        <EmptyState icon={Library} title={folder ? t.library.emptyFolderTitle : t.library.emptyTitle} body={t.library.emptyBody} action={actions} />
+      {!isEmpty && <SearchField value={query} onChange={setQuery} />}
+
+      {results ? (
+        <SearchResultsList results={results} query={deferred} />
+      ) : isEmpty ? (
+        <EmptyState
+          icon={NotebookPen}
+          title={t.library.emptyTitle}
+          body={t.library.emptyBody}
+          action={
+            <>
+              {newNotebookButton(true)}
+              <Button icon={FilePlus} onClick={() => void newPage()}>
+                {t.actions.newLoosePage}
+              </Button>
+            </>
+          }
+        />
       ) : (
         <>
-          {folders.length > 0 && (
-            <Section title={t.library.folders}>
-              <ul className="grid gap-2 lg:grid-cols-2">
-                {folders.map((f, index) => (
-                  <FolderRow key={f.id} folder={f} workspace={workspace} position={{ index, count: folders.length }} />
-                ))}
-              </ul>
-            </Section>
-          )}
-          {notebooks.length > 0 && (
-            <Section
-              title={t.library.notebooks}
-              action={
+          <Section
+            title={t.library.notebooks}
+            action={
+              notebooks.length > 0 && (
                 <Segmented
                   legend={t.library.viewAs}
                   name="library-view"
@@ -95,44 +84,57 @@ export function LibraryScreen() {
                   ]}
                   onChange={(view) => void guarded(() => writeSetting('libraryView', view))}
                 />
-              }
-            >
-              {settings.libraryView === 'shelf' ? (
-                <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-4 gap-y-5">
-                  {notebooks.map((n, index) => (
-                    <NotebookCard key={n.id} notebook={n} workspace={workspace} position={{ index, count: notebooks.length }} />
-                  ))}
-                </ul>
-              ) : (
-                <ul className="grid gap-2">
-                  {notebooks.map((n, index) => (
-                    <NotebookRow key={n.id} notebook={n} workspace={workspace} position={{ index, count: notebooks.length }} />
-                  ))}
-                </ul>
-              )}
-            </Section>
-          )}
-          {pages.length > 0 && (
-            <Section title={t.library.pages}>
+              )
+            }
+          >
+            {notebooks.length === 0 ? (
+              <p className="text-sm text-muted">{t.library.noNotebooks}</p>
+            ) : settings.libraryView === 'shelf' ? (
+              <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-4 gap-y-5">
+                {notebooks.map((n, index) => (
+                  <NotebookCard key={n.id} notebook={n} workspace={workspace} position={{ index, count: notebooks.length }} />
+                ))}
+              </ul>
+            ) : (
+              <ul className="grid gap-2">
+                {notebooks.map((n, index) => (
+                  <NotebookRow key={n.id} notebook={n} workspace={workspace} position={{ index, count: notebooks.length }} />
+                ))}
+              </ul>
+            )}
+          </Section>
+          <Section
+            title={t.library.loosePages}
+            action={
+              <Button icon={FilePlus} onClick={() => void newPage()}>
+                {t.actions.newLoosePage}
+              </Button>
+            }
+          >
+            {pages.length === 0 ? (
+              <p className="text-sm text-muted">{t.library.noLoosePages}</p>
+            ) : (
               <ul className="grid gap-2">
                 {pages.map((p, index) => (
                   <PageRow key={p.id} page={p} workspace={workspace} position={{ index, count: pages.length }} />
                 ))}
               </ul>
-            </Section>
-          )}
+            )}
+          </Section>
         </>
       )}
 
-      <NameDialog
-        open={dialog === 'folder'}
-        onClose={() => setDialog(null)}
-        title={t.library.newFolderTitle}
-        label={t.organise.name}
-        submitLabel={t.library.createFolder}
-        onSubmit={(name) => void guarded(() => createFolder({ name, parentId: folderId }))}
+      <NotebookDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        // A new notebook opens at once: the next thing to do is write in it.
+        onSubmit={(details) =>
+          void guarded(async () => {
+            const notebook = await createNotebook(details);
+            navigate(notebookPath(notebook.id));
+          })
+        }
       />
-      <NotebookDialog open={dialog === 'notebook'} onClose={() => setDialog(null)} onSubmit={(details) => void guarded(() => createNotebook({ ...details, folderId }))} />
     </>
   );
 }

@@ -16,6 +16,8 @@ export interface FileNodeOptions {
   view: ComponentType<ReactNodeViewProps> | null;
   /** Opens the file: the PDF reader. By default, through the app's hash route. */
   onOpen: (attachmentId: Id) => void;
+  /** The page being edited. A recording that ends after the page is closed is put into its block there. */
+  pageId: Id | null;
 }
 
 declare module '@tiptap/core' {
@@ -43,7 +45,7 @@ function fileNode(kind: AttachmentKind, command: 'insertPdf' | 'insertAudio') {
     draggable: false,
 
     addOptions() {
-      return { view: null, onOpen: openFileRoute };
+      return { view: null, onOpen: openFileRoute, pageId: null };
     },
 
     addAttributes() {
